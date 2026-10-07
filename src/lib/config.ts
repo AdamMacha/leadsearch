@@ -24,6 +24,13 @@ export const config = {
 
   auditBaseUrl: env("AUDIT_BASE_URL") ?? "http://localhost:3000/a",
 
+  smtpHost: env("SMTP_HOST") ?? "smtp.seznam.cz",
+  smtpPort: Number(env("SMTP_PORT") || "465"),
+  smtpSecure: env("SMTP_SECURE") === "false" ? false : true,
+  smtpUser: env("SMTP_USER"),
+  smtpPass: env("SMTP_PASS"),
+  smtpFrom: env("SMTP_FROM"),
+
   sender: {
     name: env("SENDER_NAME") ?? "Adam Macha",
     company: env("SENDER_COMPANY") ?? "Technologio",
@@ -41,6 +48,7 @@ export function integrationStatus() {
     gemini: Boolean(config.geminiKey),
     telegram: Boolean(config.telegramToken && config.telegramChatId),
     password: Boolean(config.appPassword),
+    email: Boolean(config.smtpUser && config.smtpPass),
   };
 }
 

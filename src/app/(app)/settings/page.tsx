@@ -61,6 +61,17 @@ const GUIDES = [
     link: "https://t.me/BotFather",
   },
   {
+    key: "email",
+    name: "Odesílání e-mailů na 1 kliknutí (SMTP)",
+    env: ["SMTP_USER", "SMTP_PASS", "SMTP_HOST (výchozí: smtp.seznam.cz)", "SMTP_PORT (výchozí: 465)"],
+    required: false,
+    steps: [
+      "Umožňuje odesílat vygenerované e-maily klientům přímo z aplikace stiskem jednoho tlačítka.",
+      "Pro Seznam Email Profi (technologio.eu): SMTP_USER je tvůj e-mail, SMTP_PASS je heslo (při 2FA vygeneruj 'Heslo pro aplikace' v Seznam profilu).",
+      "Funguje i s Google Workspace, Resend nebo jakýmkoliv jiným SMTP serverem.",
+    ],
+  },
+  {
     key: "password",
     name: "Heslo do aplikace",
     env: ["APP_PASSWORD", "SESSION_SECRET (náhodný řetězec 32+ znaků)"],

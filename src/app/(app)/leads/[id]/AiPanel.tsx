@@ -1,8 +1,21 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { generateAuditAction, generateOutreachAction, markEmailSent, saveOutreach } from "@/app/actions";
-import { IconCheck, IconCopy, IconExternal, IconMail, IconSparkle } from "@/components/icons";
+import {
+  generateAuditAction,
+  generateOutreachAction,
+  markEmailSent,
+  saveOutreach,
+  sendDirectEmailAction,
+} from "@/app/actions";
+import {
+  IconCheck,
+  IconCopy,
+  IconExternal,
+  IconMail,
+  IconSend,
+  IconSparkle,
+} from "@/components/icons";
 import type { AuditContent, OutreachContent } from "@/lib/types";
 import styles from "./lead.module.css";
 
@@ -34,6 +47,10 @@ export function AiPanel({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({ subject: outreach?.subject ?? "", email: outreach?.email ?? "" });
 
+  const [sendingDirect, setSendingDirect] = useState(false);
+  const [sendSuccess, setSendSuccess] = useState<string | null>(null);
+  const [directError, setDirectError] = useState<string | null>(null);
+
   const gen = (kind: "audit" | "outreach") => {
     setBusy(kind);
     setError(null);
@@ -56,6 +73,32 @@ export function AiPanel({
     outreach && email
       ? `mailto:${email}?subject=${encodeURIComponent(draft.subject)}&body=${encodeURIComponent(draft.email)}`
       : null;
+
+  const handleSendDirect = async () => {
+    if (!email) {
+      setDirectError("Doplň nejdřív e-mail klienta v sekci Kontakt vpravo.");
+      return;
+    }
+    if (!confirm(`Opravdu odeslat tento e-mail přímo na adresu ${email}?`)) {
+      return;
+    }
+    setSendingDirect(true);
+    setDirectError(null);
+    setSendSuccess(null);
+    try {
+      const res = await sendDirectEmailAction(id, draft.subject, draft.email);
+      if (!res.ok) {
+        setDirectError(res.error);
+      } else {
+        setSendSuccess(`E-mail byl úspěšně odeslán na ${res.recipient}!`);
+        setTimeout(() => setSendSuccess(null), 8000);
+      }
+    } catch (err) {
+      setDirectError((err as Error).message);
+    } finally {
+      setSendingDirect(false);
+    }
+  };
 
   return (
     <section className="card">
@@ -126,6 +169,16 @@ export function AiPanel({
           {tab === "email" &&
             (outreach ? (
               <div className="stack">
+                {sendSuccess && (
+                  <div className="alert alert-info row" style={{ gap: 8 }}>
+                    <IconCheck size={14} style={{ color: "var(--good)" }} /> {sendSuccess}
+                  </div>
+                )}
+                {directError && (
+                  <div className="alert alert-bad row" style={{ gap: 8 }}>
+                    {directError}
+                  </div>
+                )}
                 {editing ? (
                   <>
                     <input className="input" value={draft.subject} onChange={(e) => setDraft({ ...draft, subject: e.target.value })} aria-label="Předmět" />
@@ -137,21 +190,31 @@ export function AiPanel({
                     <div className={styles.pre}>{draft.email}</div>
                   </>
                 )}
-                <div className="row">
+                <div className="row" style={{ gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    className="btn btn-sm btn-primary"
+                    disabled={sendingDirect || !email}
+                    onClick={handleSendDirect}
+                    id="send-direct"
+                  >
+                    {sendingDirect ? <span className="spinner" /> : <IconSend size={13} />}
+                    Odeslat 1 kliknutím
+                  </button>
+                  {mailto && (
+                    <a href={mailto} className="btn btn-sm" onClick={() => start(() => markEmailSent(id))} id="send-email">
+                      <IconMail size={13} /> Otevřít v klientovi
+                    </a>
+                  )}
                   {editing ? (
-                    <button className="btn btn-primary btn-sm" onClick={() => start(async () => { await saveOutreach(id, draft.subject, draft.email); setEditing(false); })}>
+                    <button className="btn btn-sm" onClick={() => start(async () => { await saveOutreach(id, draft.subject, draft.email); setEditing(false); })}>
                       Uložit
                     </button>
                   ) : (
-                    <button className="btn btn-sm" onClick={() => setEditing(true)}>Upravit</button>
+                    <button className="btn btn-sm btn-ghost" onClick={() => setEditing(true)}>Upravit</button>
                   )}
                   <CopyButton text={`${draft.subject}\n\n${draft.email}`} label="Kopírovat" />
-                  {mailto ? (
-                    <a href={mailto} className="btn btn-sm btn-primary" onClick={() => start(() => markEmailSent(id))} id="send-email">
-                      <IconMail size={13} /> Otevřít v e-mailu
-                    </a>
-                  ) : (
-                    <span className="small muted">Doplň e-mail v kontaktu pro odeslání.</span>
+                  {!email && (
+                    <span className="small muted">Doplň e-mail vpravo v kontaktu pro odeslání.</span>
                   )}
                 </div>
               </div>

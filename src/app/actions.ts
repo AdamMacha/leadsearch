@@ -122,6 +122,28 @@ export async function saveOutreach(id: string, subject: string, email: string) {
   refresh();
 }
 
+export async function sendDirectEmailAction(id: string, subject: string, emailText: string) {
+  await guard();
+  const r = repo();
+  const lead = await r.getLead(id);
+  if (!lead) return { ok: false as const, error: "Lead nenalezen." };
+  const to = lead.email?.trim();
+  if (!to) return { ok: false as const, error: "Lead nemá vyplněný e-mail. Doplň ho nejdřív v sekci Kontakt vpravo." };
+
+  try {
+    const { sendEmail } = await import("@/lib/mail");
+    await sendEmail({ to, subject, text: emailText });
+    if (lead.status === "new") {
+      await r.updateLead(id, { status: "contacted" });
+    }
+    await r.addActivity(id, "email", `Odeslán e-mail přímo z aplikace na ${to}: "${subject}"`);
+    refresh();
+    return { ok: true as const, recipient: to };
+  } catch (e) {
+    return { ok: false as const, error: (e as Error).message };
+  }
+}
+
 /* ---------- Manual lead ---------- */
 
 export async function addManualLeadAction(_prev: { error?: string } | undefined, formData: FormData) {
