@@ -17,7 +17,7 @@ export const config = {
   pageSpeedKey: env("PAGESPEED_API_KEY") ?? env("GOOGLE_PLACES_API_KEY"),
 
   geminiKey: env("GEMINI_API_KEY"),
-  geminiModel: env("GEMINI_MODEL") ?? "gemini-2.5-flash",
+  geminiModel: env("GEMINI_MODEL") ?? "gemini-3.8-flash",
 
   telegramToken: env("TELEGRAM_BOT_TOKEN"),
   telegramChatId: env("TELEGRAM_CHAT_ID"),
