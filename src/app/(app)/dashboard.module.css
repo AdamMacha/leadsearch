@@ -1,0 +1,82 @@
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.25s var(--ease), border-color 0.25s;
+}
+.stat:hover { transform: translateY(-2px); border-color: var(--border-strong); }
+.stat::after {
+  content: "";
+  position: absolute;
+  right: -40px;
+  top: -40px;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--tone, var(--accent));
+  opacity: 0.12;
+  filter: blur(30px);
+}
+.stat[data-tone="good"] { --tone: var(--good); }
+.stat[data-tone="warn"] { --tone: var(--warn); }
+.stat[data-tone="bad"] { --tone: var(--bad); }
+
+.statIcon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--tone, hsl(258 92% 78%));
+  margin-bottom: 10px;
+}
+.statValue { font-family: var(--font-display); font-size: 30px; font-weight: 700; line-height: 1.15; }
+
+.pipeline { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: hsl(232 30% 4% / 0.5);
+  border: 1px solid var(--border);
+  transition: border-color 0.2s, transform 0.2s var(--ease);
+}
+.stage:hover { border-color: var(--border-strong); transform: translateY(-1px); }
+.stageBar { height: 4px; border-radius: 4px; display: block; background: currentColor; }
+.stageLabel { font-size: 12px; color: var(--text-2); }
+.stage strong { font-family: var(--font-display); font-size: 20px; }
+
+.columns { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; }
+
+.list { list-style: none; display: flex; flex-direction: column; gap: 2px; }
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  margin: 0 -12px;
+  border-radius: 10px;
+  transition: background 0.15s;
+}
+.item:hover { background: var(--surface-2); }
+.item > div { display: flex; flex-direction: column; gap: 2px; }
+.ellipsis { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+@media (max-width: 1100px) {
+  .stats { grid-template-columns: repeat(2, 1fr); }
+  .columns { grid-template-columns: 1fr; }
+  .pipeline { grid-template-columns: repeat(4, 1fr); }
+}

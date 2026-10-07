@@ -1,0 +1,99 @@
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 22px 14px;
+  border-right: 1px solid var(--border);
+  background: hsl(232 30% 6% / 0.7);
+  backdrop-filter: blur(20px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 4px 10px 26px;
+}
+.brand strong { display: block; font-family: var(--font-display); font-size: 16px; letter-spacing: -0.02em; }
+.brand small { display: block; font-size: 11px; color: var(--text-3); margin-top: 1px; }
+
+.logo {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 11px;
+  background: var(--gradient);
+  color: white;
+  box-shadow: var(--glow);
+}
+
+.nav { display: flex; flex-direction: column; gap: 3px; }
+
+.link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  height: 40px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: var(--text-2);
+  font-weight: 500;
+  transition: background 0.2s, color 0.2s;
+  position: relative;
+}
+.link:hover { background: var(--surface-2); color: var(--text); }
+.active { background: var(--accent-soft); color: var(--text); }
+.active::before {
+  content: "";
+  position: absolute;
+  left: -14px;
+  top: 10px;
+  bottom: 10px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--gradient);
+}
+.active svg { color: hsl(258 92% 78%); }
+
+.count {
+  margin-left: auto;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--bad-soft);
+  color: var(--bad);
+  font-size: 11px;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+}
+
+.footer { margin-top: auto; }
+.logout { width: 100%; justify-content: flex-start; }
+
+@media (max-width: 900px) {
+  .sidebar {
+    position: fixed;
+    bottom: 0;
+    top: auto;
+    left: 0;
+    right: 0;
+    height: auto;
+    width: 100%;
+    flex-direction: row;
+    padding: 8px;
+    z-index: 50;
+    border-right: none;
+    border-top: 1px solid var(--border);
+  }
+  .brand, .footer { display: none; }
+  .nav { flex-direction: row; width: 100%; justify-content: space-around; }
+  .link span:not(.count) { display: none; }
+  .active::before { display: none; }
+}

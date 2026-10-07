@@ -1,0 +1,54 @@
+.searchCard { padding: 24px; }
+
+.fields {
+  display: grid;
+  grid-template-columns: 2fr 1.3fr 0.8fr auto;
+  gap: 12px;
+}
+
+.presets {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.presetGroup { display: flex; flex-direction: column; gap: 7px; }
+
+.chip {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-2);
+  font: 500 12.5px var(--font-sans);
+  cursor: pointer;
+  transition: all 0.18s var(--ease);
+}
+.chip:hover { color: var(--text); border-color: hsl(258 92% 75% / 0.5); background: var(--accent-soft); }
+.chipActive { color: white; background: var(--gradient); border-color: transparent; }
+
+.resultsHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.progress { height: 3px; background: var(--border); overflow: hidden; }
+.progress span { display: block; height: 100%; background: var(--gradient); transition: width 0.5s var(--ease); box-shadow: 0 0 12px var(--accent); }
+
+.manual {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+
+@media (max-width: 900px) {
+  .fields, .manual { grid-template-columns: 1fr; }
+}

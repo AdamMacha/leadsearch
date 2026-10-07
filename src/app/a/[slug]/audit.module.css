@@ -1,0 +1,172 @@
+.page {
+  min-height: 100vh;
+  position: relative;
+  overflow: hidden;
+  font-size: 16px;
+}
+
+.glow {
+  position: absolute;
+  inset: -200px 0 auto;
+  height: 700px;
+  background:
+    radial-gradient(600px 300px at 50% 30%, hsl(258 92% 60% / 0.25), transparent 70%),
+    radial-gradient(500px 300px at 80% 10%, hsl(192 95% 50% / 0.15), transparent 70%);
+  pointer-events: none;
+}
+
+.top {
+  position: relative;
+  max-width: 920px;
+  margin: 0 auto;
+  padding: 28px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.brand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 20px;
+  letter-spacing: -0.03em;
+  background: var(--gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.date { font-size: 13px; color: var(--text-3); }
+
+.main { position: relative; max-width: 920px; margin: 0 auto; padding: 0 24px 60px; }
+
+.hero { text-align: center; padding: 50px 0 40px; animation: fade-up 0.7s var(--ease) both; }
+.eyebrow {
+  display: inline-block;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid hsl(258 92% 68% / 0.3);
+  color: hsl(258 92% 85%);
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 20px;
+}
+.hero h1 { font-size: clamp(30px, 5vw, 48px); line-height: 1.1; max-width: 720px; margin: 0 auto; }
+.lead { color: var(--text-2); font-size: 18px; max-width: 640px; margin: 20px auto 0; line-height: 1.6; }
+
+.overview {
+  display: grid;
+  grid-template-columns: 1fr 1.3fr auto;
+  gap: 18px;
+  align-items: stretch;
+  animation: fade-up 0.7s 0.1s var(--ease) both;
+}
+
+.healthCard, .metrics, .issue, .recs li, .cta {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  backdrop-filter: blur(18px);
+}
+
+.healthCard {
+  padding: 26px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  --tone: var(--text-3);
+}
+.healthCard[data-tone="good"] { --tone: var(--good); }
+.healthCard[data-tone="warn"] { --tone: var(--warn); }
+.healthCard[data-tone="bad"] { --tone: var(--bad); }
+.healthLabel { color: var(--text-2); font-size: 14px; }
+.healthValue { font-family: var(--font-display); font-size: 64px; line-height: 1; color: var(--tone); text-shadow: 0 0 40px var(--tone); }
+.healthValue small { font-size: 22px; color: var(--text-3); text-shadow: none; margin-left: 4px; }
+.healthHint { font-weight: 600; color: var(--tone); }
+
+.metrics { padding: 24px; display: flex; flex-direction: column; justify-content: center; gap: 16px; }
+.metric { --tone: var(--text-3); }
+.metric[data-tone="good"] { --tone: var(--good); }
+.metric[data-tone="warn"] { --tone: var(--warn); }
+.metric[data-tone="bad"] { --tone: var(--bad); }
+.metricBar { height: 6px; border-radius: 6px; background: hsl(232 30% 70% / 0.1); overflow: hidden; margin-bottom: 6px; }
+.metricBar span { display: block; height: 100%; border-radius: 6px; background: var(--tone); box-shadow: 0 0 10px var(--tone); }
+.metricRow { display: flex; justify-content: space-between; font-size: 14px; color: var(--text-2); }
+.metricRow strong { color: var(--text); font-variant-numeric: tabular-nums; }
+
+.phone { width: 190px; margin: 0; text-align: center; }
+.phone img { width: 100%; border-radius: 24px; border: 7px solid hsl(232 20% 18%); box-shadow: var(--shadow); display: block; background: #000; }
+.phone figcaption { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+
+.section { margin-top: 56px; animation: fade-up 0.7s 0.2s var(--ease) both; }
+.section > h2 { font-size: 26px; margin-bottom: 20px; }
+
+.issues { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.issue { padding: 18px; display: flex; gap: 14px; }
+.issue h3 { font-size: 16px; margin-bottom: 4px; }
+.issue p { color: var(--text-2); font-size: 14.5px; line-height: 1.55; }
+.sev { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 6px; background: var(--text-3); }
+.issue[data-sev="critical"] .sev, .issue[data-sev="high"] .sev { background: var(--bad); box-shadow: 0 0 10px var(--bad); }
+.issue[data-sev="medium"] .sev { background: var(--warn); box-shadow: 0 0 10px var(--warn); }
+
+.recs { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.recs li { padding: 20px; display: flex; gap: 16px; align-items: flex-start; }
+.recs h3 { font-size: 17px; margin-bottom: 4px; }
+.recs p { color: var(--text-2); font-size: 15px; }
+.num {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: var(--gradient);
+  color: white;
+  font-weight: 700;
+  font-family: var(--font-display);
+}
+
+.benefits { list-style: none; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.benefits li {
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(160deg, hsl(258 92% 68% / 0.14), hsl(192 95% 56% / 0.06));
+  border: 1px solid hsl(258 92% 68% / 0.22);
+  font-weight: 500;
+  line-height: 1.5;
+}
+.benefits li::before { content: "✓"; display: block; color: var(--good); font-weight: 700; font-size: 18px; margin-bottom: 8px; }
+
+.cta {
+  margin-top: 64px;
+  padding: 44px 32px;
+  text-align: center;
+  background:
+    radial-gradient(500px 200px at 50% 0%, hsl(258 92% 60% / 0.25), transparent 70%),
+    var(--surface);
+  border-color: hsl(258 92% 68% / 0.3);
+}
+.cta h2 { font-size: 30px; }
+.cta > p { color: var(--text-2); margin-top: 10px; }
+.ctaButtons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; margin-top: 26px; }
+.ctaPrimary, .ctaSecondary {
+  height: 50px;
+  padding: 0 26px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 600;
+  transition: transform 0.2s var(--ease), box-shadow 0.2s;
+}
+.ctaPrimary { background: var(--gradient); color: white; box-shadow: var(--glow); }
+.ctaSecondary { border: 1px solid var(--border-strong); background: var(--surface-2); }
+.ctaPrimary:hover, .ctaSecondary:hover { transform: translateY(-2px); }
+.sign { margin-top: 22px; font-size: 14px; color: var(--text-3); }
+
+.footer { text-align: center; font-size: 12px; color: var(--text-3); padding: 24px; border-top: 1px solid var(--border); position: relative; }
+
+@media (max-width: 820px) {
+  .overview { grid-template-columns: 1fr; }
+  .phone { margin: 0 auto; }
+  .issues, .benefits { grid-template-columns: 1fr; }
+}
