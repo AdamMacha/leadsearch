@@ -32,7 +32,7 @@ export const config = {
   smtpFrom: env("SMTP_FROM"),
 
   sender: {
-    name: env("SENDER_NAME") ?? "Adam Macha",
+    name: env("SENDER_NAME") ?? "Bc. Adam Mácha",
     company: env("SENDER_COMPANY") ?? "Technologio",
     web: env("SENDER_WEB") ?? "https://www.technologio.eu",
     email: env("SENDER_EMAIL") ?? "",
