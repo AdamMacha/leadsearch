@@ -47,6 +47,12 @@ export default async function AuditPage(props: PageProps<"/a/[slug]">) {
     : null;
   const recommendations = audit?.recommendations ?? issues.slice(0, 5).map((i) => ({ title: i.title, description: i.description }));
   const tone = health == null ? "muted" : health >= 70 ? "good" : health >= 40 ? "warn" : "bad";
+  const defaultHeadline = lead.website
+    ? `Jak z webu získat více zákazníků pro ${lead.name}`
+    : `Návrh nového webu pro ${lead.name}`;
+  const headline = audit?.headline && !/audit/i.test(audit.headline)
+    ? audit.headline
+    : defaultHeadline;
 
   return (
     <div className={styles.page}>
@@ -59,7 +65,7 @@ export default async function AuditPage(props: PageProps<"/a/[slug]">) {
       <main className={styles.main}>
         <section className={styles.hero}>
           <span className={styles.eyebrow}>Nezávazný rozbor a doporučení</span>
-          <h1>{audit?.headline ?? (lead.website ? `Rozbor webu ${lead.name}` : `Návrh webu pro ${lead.name}`)}</h1>
+          <h1>{headline}</h1>
           <p className={styles.lead}>
             {audit?.summary ??
               (lead.website

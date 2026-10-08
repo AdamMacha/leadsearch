@@ -122,22 +122,28 @@ const SENDER = () =>
 
 export async function generateAudit(lead: Lead, modelOverride?: string): Promise<AuditContent> {
   if (!config.geminiKey) return templateAudit(lead);
+  const defaultHeadline = lead.website
+    ? `Jak z webu získat více zákazníků pro ${lead.name}`
+    : `Návrh nového webu pro ${lead.name}`;
   const { data: out, modelUsed } = await gemini<Omit<AuditContent, "generatedAt" | "model">>(`
-Jsi zkušený webový konzultant. Napiš stručný, lidský a konkrétní audit webu pro majitele firmy v češtině.
+Jsi zkušený webový konzultant. Napiš stručný, lidský a konkrétní rozbor webu pro majitele firmy v češtině.
 Nepoužívej technický žargon, mluv o dopadu na zákazníky a tržby. Žádné přehánění ani vymyšlená čísla.
 Tykání ne – vykej. Délka summary max 3 věty.
+Pravidla pro titulek ("headline"):
+- Vždy použij přesně: "${defaultHeadline}". Nikdy nepoužívej slovo "audit", neskloňuj název firmy a nepřidávej města.
 
 Data o firmě:
 ${leadContext(lead)}
 
 Vrať JSON:
 {
-  "headline": "krátký titulek auditu (max 8 slov)",
-  "summary": "shrnutí stavu webu a hlavní příležitosti",
+  "headline": "${defaultHeadline}",
+  "summary": "shrnutí stavu webu a hlavní příležitosti (max 3 věty)",
   "recommendations": [{"title": "...", "description": "1–2 věty"}],   // 3–5 doporučení seřazených podle dopadu
   "benefits": ["přínos 1", "přínos 2", "přínos 3"]                       // co firma získá novým webem
 }`, modelOverride);
-  return { ...out, generatedAt: new Date().toISOString(), model: modelUsed };
+  const cleanHeadline = out.headline && !/audit/i.test(out.headline) ? out.headline : defaultHeadline;
+  return { ...out, headline: cleanHeadline, generatedAt: new Date().toISOString(), model: modelUsed };
 }
 
 export async function generateOutreach(lead: Lead, modelOverride?: string): Promise<OutreachContent> {
@@ -173,7 +179,9 @@ function templateAudit(lead: Lead): AuditContent {
   const issues = lead.analysis?.issues ?? [];
   const noWeb = !lead.website;
   return {
-    headline: noWeb ? `${lead.name}: čas na vlastní moderní web` : `Rozbor webu pro ${lead.name}`,
+    headline: noWeb
+      ? `Návrh nového webu pro ${lead.name}`
+      : `Jak z webu získat více zákazníků pro ${lead.name}`,
     summary: noWeb
       ? `Firma ${lead.name} má na Googlu ${lead.reviewsCount ?? 0} recenzí, ale žádný vlastní web. Zákazníci, kteří vás hledají, tak nemají kde zjistit víc ani poslat poptávku.`
       : `Prošli jsme web ${lead.website} a našli ${issues.length} oblastí ke zlepšení. Nejdůležitější: ${issues
