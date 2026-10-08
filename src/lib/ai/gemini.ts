@@ -115,10 +115,14 @@ function leadContext(lead: Lead) {
   );
 }
 
-const SENDER = () =>
-  `${config.sender.name}, ${config.sender.company} (${config.sender.web})` +
-  (config.sender.phone ? `, tel. ${config.sender.phone}` : "") +
-  (config.sender.email ? `, ${config.sender.email}` : "");
+const SENDER = () => {
+  const phone = config.sender.phone
+    ? config.sender.phone.replace(/^(\+?\d{3})(\d{3})(\d{3})(\d{3})$/, "$1 $2 $3 $4")
+    : "";
+  return `${config.sender.name}\n${config.sender.company} (${config.sender.web})` +
+    (phone ? `\ntel. ${phone}` : "") +
+    (config.sender.email ? `\n${config.sender.email}` : "");
+};
 
 export async function generateAudit(lead: Lead, modelOverride?: string): Promise<AuditContent> {
   if (!config.geminiKey) return templateAudit(lead);
@@ -150,15 +154,20 @@ export async function generateOutreach(lead: Lead, modelOverride?: string): Prom
   if (!config.geminiKey) return templateOutreach(lead);
   const link = lead.auditSlug ? auditUrl(lead.auditSlug) : null;
   const { data: out, modelUsed } = await gemini<Omit<OutreachContent, "generatedAt" | "model">>(`
-Jsi freelance webový vývojář a píšeš osobní (ne hromadný) první kontakt konkrétní firmě v češtině.
+Jsi zkušený webový vývojář a píšeš osobní (ne hromadný) první kontakt konkrétní firmě v češtině.
 Pravidla:
 - Krátce, věcně, přátelsky, vykat. E-mail max 120 slov.
 - Zmiň 1–2 nejdůležitější konkrétní zjištění o JEJICH webu (nebo že web nemají).
-- Žádné fráze typu "doufám, že se máte dobře", žádný nátlak, žádné vymyšlené statistiky.
-- Výzva k akci: krátký nezávazný hovor (15 min).
+- Žádné klišé typu "doufám, že se máte dobře", žádný nátlak, žádné vymyšlené statistiky.
 ${link ? `- Do e-mailu přirozeně vlož odkaz na připravený rozbor / ukázku webu: ${link} (např. "Připravil jsem pro vás krátký rozbor s konkrétními tipy: ${link}" nebo "Sepsal jsem k tomu rychlé shrnutí: ${link}")` : ""}
-- Na konec přidej větu, že pokud nemají zájem, stačí odepsat a už se neozveš.
-- Podpis: ${SENDER()}
+- Výzva k akci (přirozená, vstřícná a přátelská):
+  Zeptej se např.: "Dávalo by vám smysl se na to na 10–15 minut nezávazně podívat? Rád vám ukážu konkrétní nápady na vylepšení a co by to vaší firmě přineslo."
+  (Nikdy nepoužívej negativní, mentorské nebo úřední formulace jako "možnosti nápravy", "napravit chyby" apod.).
+- Závěrečná věta (zdvořilý a respektující opt-out):
+  Napiš přesně nebo ve stylu: "Pokud pro vás nový web teď není téma, stačí dát krátce vědět – plně to respektuji a nebudu vás dál rušit."
+  (Nikdy nepiš drsné nebo neomalené formulace jako "už se neozvu").
+- Podpis:
+${SENDER()}
 
 Data o firmě:
 ${leadContext(lead)}
@@ -208,12 +217,12 @@ function templateOutreach(lead: Lead): OutreachContent {
   const email = `Dobrý den,
 
 ${finding}. To vás může stát část zákazníků, kteří vás hledají na mobilu nebo na Googlu.
-${link ? `\nPřipravil jsem pro vás stručný nezávazný rozbor s konkrétními tipy: ${link}\n` : ""}
-Tvořím moderní weby na míru pro firmy jako ta vaše. Měli byste chuť na krátký 15minutový hovor, kde vám ukážu, co by se dalo zlepšit?
+${link ? `\nPřipravil jsem pro vás stručný nezávazný rozbor s konkrétními tipy:\n${link}\n` : ""}
+Dávalo by vám smysl se na to na 10–15 minut nezávazně podívat? Rád vám ukážu konkrétní nápady na vylepšení a co by to vaší firmě přineslo.
 
-Pokud nemáte zájem, stačí odepsat a už se neozvu.
+Pokud pro vás nový web teď není téma, stačí dát krátce vědět – plně to respektuji a nebudu vás dál rušit.
 
-S pozdravem
+S pozdravem,
 ${SENDER()}`;
   return {
     subject: lead.website ? `Pár postřehů k webu ${lead.name}` : `Web pro ${lead.name}?`,
