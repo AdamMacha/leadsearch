@@ -135,16 +135,16 @@ export default async function SettingsPage() {
         })}
 
         <section className="card">
-          <div className="card-title"><h3>Audit stránky & podpis</h3></div>
+          <div className="card-title"><h3>Veřejné rozbory webu & podpis</h3></div>
           <dl className="stack small">
             <div className="row" style={{ justifyContent: "space-between" }}><dt className="muted">AUDIT_BASE_URL</dt><dd><code>{config.auditBaseUrl}</code></dd></div>
-            <div className="row" style={{ justifyContent: "space-between" }}><dt className="muted">AUDIT_HOST</dt><dd><code>{process.env.AUDIT_HOST || "–"}</code></dd></div>
+            <div className="row" style={{ justifyContent: "space-between" }}><dt className="muted">AUDIT_HOST</dt><dd><code>{process.env.AUDIT_HOST || "web.technologio.eu"}</code></dd></div>
             <div className="row" style={{ justifyContent: "space-between" }}><dt className="muted">Podpis</dt><dd>{config.sender.name}, {config.sender.company}</dd></div>
             <div className="row" style={{ justifyContent: "space-between" }}><dt className="muted">E-mail / telefon</dt><dd>{config.sender.email || "–"} / {config.sender.phone || "–"}</dd></div>
           </dl>
           <p className="small muted" style={{ marginTop: 12 }}>
-            Pro <code>audit.technologio.eu</code>: přidej doménu ve Vercel projektu, u DNS nastav CNAME na <code>cname.vercel-dns.com</code>,
-            pak AUDIT_HOST=audit.technologio.eu a AUDIT_BASE_URL=https://audit.technologio.eu.
+            Pro <code>web.technologio.eu</code>: ve Wedos DNS přidej CNAME <code>web</code> směrující na <code>cname.vercel-dns.com</code>.
+            Ve Vercelu přidej doménu <code>web.technologio.eu</code> a nastav proměnné <code>AUDIT_HOST=web.technologio.eu</code> a <code>AUDIT_BASE_URL=https://web.technologio.eu</code>.
           </p>
         </section>
       </div>

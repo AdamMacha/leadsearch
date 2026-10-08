@@ -8,10 +8,15 @@ import { SESSION_COOKIE, verifySessionToken } from "@/lib/auth";
  */
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const host = (request.headers.get("host") ?? "").split(":")[0];
-  const auditHost = process.env.AUDIT_HOST?.trim();
+  const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
+  const configuredAuditHost = process.env.AUDIT_HOST?.trim().toLowerCase();
 
-  if (auditHost && host === auditHost) {
+  const isAuditHost =
+    (configuredAuditHost && host === configuredAuditHost) ||
+    host === "web.technologio.eu" ||
+    host === "audit.technologio.eu";
+
+  if (isAuditHost) {
     if (pathname === "/") {
       return NextResponse.redirect(process.env.SENDER_WEB || "https://www.technologio.eu");
     }

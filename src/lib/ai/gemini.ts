@@ -150,7 +150,7 @@ Pravidla:
 - Zmiň 1–2 nejdůležitější konkrétní zjištění o JEJICH webu (nebo že web nemají).
 - Žádné fráze typu "doufám, že se máte dobře", žádný nátlak, žádné vymyšlené statistiky.
 - Výzva k akci: krátký nezávazný hovor (15 min).
-${link ? `- Do e-mailu vlož odkaz na připravený audit: ${link}` : ""}
+${link ? `- Do e-mailu přirozeně vlož odkaz na připravený rozbor / ukázku webu: ${link} (např. "Připravil jsem pro vás krátký rozbor s konkrétními tipy: ${link}" nebo "Sepsal jsem k tomu rychlé shrnutí: ${link}")` : ""}
 - Na konec přidej větu, že pokud nemají zájem, stačí odepsat a už se neozveš.
 - Podpis: ${SENDER()}
 
@@ -173,7 +173,7 @@ function templateAudit(lead: Lead): AuditContent {
   const issues = lead.analysis?.issues ?? [];
   const noWeb = !lead.website;
   return {
-    headline: noWeb ? `${lead.name}: čas na vlastní web` : `Audit webu ${lead.name}`,
+    headline: noWeb ? `${lead.name}: čas na vlastní moderní web` : `Rozbor webu pro ${lead.name}`,
     summary: noWeb
       ? `Firma ${lead.name} má na Googlu ${lead.reviewsCount ?? 0} recenzí, ale žádný vlastní web. Zákazníci, kteří vás hledají, tak nemají kde zjistit víc ani poslat poptávku.`
       : `Prošli jsme web ${lead.website} a našli ${issues.length} oblastí ke zlepšení. Nejdůležitější: ${issues
@@ -200,7 +200,7 @@ function templateOutreach(lead: Lead): OutreachContent {
   const email = `Dobrý den,
 
 ${finding}. To vás může stát část zákazníků, kteří vás hledají na mobilu nebo na Googlu.
-${link ? `\nPřipravil jsem pro vás krátký nezávazný audit: ${link}\n` : ""}
+${link ? `\nPřipravil jsem pro vás stručný nezávazný rozbor s konkrétními tipy: ${link}\n` : ""}
 Tvořím moderní weby na míru pro firmy jako ta vaše. Měli byste chuť na krátký 15minutový hovor, kde vám ukážu, co by se dalo zlepšit?
 
 Pokud nemáte zájem, stačí odepsat a už se neozvu.
@@ -212,9 +212,9 @@ ${SENDER()}`;
     email,
     callScript: `• Dobrý den, tady ${config.sender.name} z ${config.sender.company}, dělám weby pro firmy v okolí.
 • ${finding[0].toUpperCase() + finding.slice(1)}.
-• Připravil jsem krátký audit – můžu vám ho poslat e-mailem?
+• Připravil jsem k tomu krátký rozbor – můžu vám poslat odkaz e-mailem?
 • Otázka: Kolik poptávek vám teď chodí přes internet?`,
-    linkedin: `Dobrý den, ${finding}. Připravil jsem krátký audit${link ? ` (${link})` : ""} – pokud by vás zajímal, rád ho proberu.`,
+    linkedin: `Dobrý den, ${finding}. Připravil jsem k tomu krátký rozbor s konkrétními tipy${link ? ` (${link})` : ""} – pokud by vás zajímal, rád ho pošlu nebo proberu.`,
     generatedAt: new Date().toISOString(),
     model: "template",
   };

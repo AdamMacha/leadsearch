@@ -22,7 +22,11 @@ export const config = {
   telegramToken: env("TELEGRAM_BOT_TOKEN"),
   telegramChatId: env("TELEGRAM_CHAT_ID"),
 
-  auditBaseUrl: env("AUDIT_BASE_URL") ?? "http://localhost:3000/a",
+  auditBaseUrl:
+    env("AUDIT_BASE_URL") ??
+    (process.env.NODE_ENV === "production"
+      ? "https://web.technologio.eu"
+      : "http://localhost:3000/a"),
 
   smtpHost: env("SMTP_HOST") ?? "smtp.seznam.cz",
   smtpPort: Number(env("SMTP_PORT") || "465"),

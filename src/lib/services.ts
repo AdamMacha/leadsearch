@@ -53,7 +53,21 @@ export async function analyzeAndSave(id: string): Promise<Lead> {
 
 export async function ensureAuditSlug(lead: Lead): Promise<Lead> {
   if (lead.auditSlug) return lead;
-  return repo().updateLead(lead.id, { auditSlug: auditSlugFor(lead.name) });
+  const r = repo();
+  const baseSlug = auditSlugFor(lead.name, lead.city);
+  let candidate = baseSlug;
+  let counter = 1;
+
+  while (true) {
+    const existing = await r.getLeadBySlug(candidate);
+    if (!existing || existing.id === lead.id) {
+      break;
+    }
+    counter += 1;
+    candidate = `${baseSlug}-${counter}`;
+  }
+
+  return r.updateLead(lead.id, { auditSlug: candidate });
 }
 
 export async function createAudit(id: string, modelOverride?: string): Promise<Lead> {

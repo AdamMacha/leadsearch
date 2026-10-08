@@ -1,16 +1,24 @@
 export function slugify(s: string) {
-  return s
+  const cleaned = s
+    .replace(/[,.]?\s*(s\.?\s*r\.?\s*o\.?|spol\.?\s*s\s*r\.?\s*o\.?|a\.?\s*s\.?|v\.?\s*o\.?\s*s\.?|z\.?\s*s\.?)\s*$/i, "")
+    .trim();
+
+  return (cleaned || s)
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
+    .slice(0, 45);
 }
 
-export function auditSlugFor(name: string) {
-  const rand = Math.random().toString(36).slice(2, 7);
-  return `${slugify(name) || "firma"}-${rand}`;
+export function auditSlugFor(name: string, city?: string | null) {
+  const baseName = slugify(name);
+  const baseCity = city ? slugify(city) : "";
+  if (baseCity && !baseName.includes(baseCity)) {
+    return `${baseName}-${baseCity}`.slice(0, 50);
+  }
+  return (baseName || "firma").slice(0, 50);
 }
 
 export function formatDate(iso: string | null | undefined, withTime = false) {

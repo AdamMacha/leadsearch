@@ -13,8 +13,8 @@ export async function generateMetadata(props: PageProps<"/a/[slug]">): Promise<M
   const { slug } = await props.params;
   const lead = await repo().getLeadBySlug(slug);
   return {
-    title: { absolute: lead ? `Audit webu – ${lead.name} | ${config.sender.company}` : "Audit" },
-    description: lead?.audit?.summary ?? "Nezávazný audit webu",
+    title: { absolute: lead ? `Návrh a rozbor webu – ${lead.name} | ${config.sender.company}` : "Rozbor webu" },
+    description: lead?.audit?.summary ?? "Nezávazný rozbor a návrh webu",
     robots: { index: false, follow: false },
   };
 }
@@ -31,8 +31,8 @@ export default async function AuditPage(props: PageProps<"/a/[slug]">) {
   if (!isOwner) {
     after(async () => {
       await r.incrementAuditViews(lead.id);
-      await r.addActivity(lead.id, "audit_view", "Klient otevřel audit");
-      await notifyTelegram(`👀 <b>${lead.name}</b> právě otevřel(a) audit.\nIdeální chvíle zavolat${lead.phone ? `: ${lead.phone}` : "."}`);
+      await r.addActivity(lead.id, "audit_view", "Klient otevřel návrh/rozbor webu");
+      await notifyTelegram(`👀 <b>${lead.name}</b> právě otevřel(a) návrh/rozbor webu.\nIdeální chvíle zavolat${lead.phone ? `: ${lead.phone}` : "."}`);
     });
   }
 
@@ -50,13 +50,13 @@ export default async function AuditPage(props: PageProps<"/a/[slug]">) {
       <div className={styles.glow} />
       <header className={styles.top}>
         <a href={s.web} className={styles.brand}>{s.company}</a>
-        <span className={styles.date}>Audit vytvořen {formatDate(audit?.generatedAt ?? lead.analyzedAt)}</span>
+        <span className={styles.date}>Připraveno {formatDate(audit?.generatedAt ?? lead.analyzedAt)}</span>
       </header>
 
       <main className={styles.main}>
         <section className={styles.hero}>
-          <span className={styles.eyebrow}>Nezávazný audit webu</span>
-          <h1>{audit?.headline ?? `Audit webu ${lead.name}`}</h1>
+          <span className={styles.eyebrow}>Nezávazný rozbor a doporučení</span>
+          <h1>{audit?.headline ?? (lead.website ? `Rozbor webu ${lead.name}` : `Návrh webu pro ${lead.name}`)}</h1>
           <p className={styles.lead}>
             {audit?.summary ??
               (lead.website
@@ -138,7 +138,7 @@ export default async function AuditPage(props: PageProps<"/a/[slug]">) {
           <p>Nezávazně vám ukážu, jak by mohl vypadat nový web a co by stál. Žádný závazek.</p>
           <div className={styles.ctaButtons}>
             {s.email && (
-              <a className={styles.ctaPrimary} href={`mailto:${s.email}?subject=${encodeURIComponent(`Audit webu – ${lead.name}`)}`}>
+              <a className={styles.ctaPrimary} href={`mailto:${s.email}?subject=${encodeURIComponent(`Rozbor webu – ${lead.name}`)}`}>
                 Napsat e-mail
               </a>
             )}
@@ -152,7 +152,7 @@ export default async function AuditPage(props: PageProps<"/a/[slug]">) {
       </main>
 
       <footer className={styles.footer}>
-        Audit vznikl automatickou analýzou veřejně dostupných informací (Google, PageSpeed Insights). © {new Date().getFullYear()} {s.company}
+        Rozbor vznikl analýzou veřejně dostupných informací (Google, PageSpeed Insights). © {new Date().getFullYear()} {s.company}
       </footer>
     </div>
   );
