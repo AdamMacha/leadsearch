@@ -162,6 +162,17 @@
 .ctaSecondary { border: 1px solid var(--border-strong); background: var(--surface-2); }
 .ctaPrimary:hover, .ctaSecondary:hover { transform: translateY(-2px); }
 .sign { margin-top: 22px; font-size: 14px; color: var(--text-3); }
+.signLink {
+  color: var(--text-2);
+  text-decoration: underline;
+  text-decoration-color: hsl(258 92% 68% / 0.4);
+  text-underline-offset: 3px;
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+.signLink:hover {
+  color: var(--text-1);
+  text-decoration-color: var(--accent);
+}
 
 .footer { text-align: center; font-size: 12px; color: var(--text-3); padding: 24px; border-top: 1px solid var(--border); position: relative; }
 

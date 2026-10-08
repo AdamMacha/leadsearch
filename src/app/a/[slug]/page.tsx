@@ -42,6 +42,9 @@ export default async function AuditPage(props: PageProps<"/a/[slug]">) {
   const health = lead.needScore == null ? null : Math.max(0, 100 - lead.needScore);
   const hasShot = Boolean(await r.getScreenshot(lead.id));
   const s = config.sender;
+  const phoneDisplay = s.phone
+    ? s.phone.replace(/^(\+?\d{3})(\d{3})(\d{3})(\d{3})$/, "$1 $2 $3 $4")
+    : null;
   const recommendations = audit?.recommendations ?? issues.slice(0, 5).map((i) => ({ title: i.title, description: i.description }));
   const tone = health == null ? "muted" : health >= 70 ? "good" : health >= 40 ? "warn" : "bad";
 
@@ -134,20 +137,30 @@ export default async function AuditPage(props: PageProps<"/a/[slug]">) {
         )}
 
         <section className={styles.cta}>
-          <h2>Probereme to na 15 minut?</h2>
-          <p>Nezávazně vám ukážu, jak by mohl vypadat nový web a co by stál. Žádný závazek.</p>
+          <h2>Dává vám to smysl? Pojďme to nezávazně probrat</h2>
+          <p>Rád vám během 15 minut ukážu konkrétní koncept nového webu a probereme, jak získat více organických poptávek z internetu. K ničemu vás to nezavazuje.</p>
           <div className={styles.ctaButtons}>
             {s.email && (
               <a className={styles.ctaPrimary} href={`mailto:${s.email}?subject=${encodeURIComponent(`Rozbor webu – ${lead.name}`)}`}>
                 Napsat e-mail
               </a>
             )}
-            {s.phone && <a className={styles.ctaSecondary} href={`tel:${s.phone.replace(/\s/g, "")}`}>Zavolat {s.phone}</a>}
+            {s.phone && <a className={styles.ctaSecondary} href={`tel:${s.phone.replace(/\s/g, "")}`}>Zavolat {phoneDisplay}</a>}
             <a className={s.email ? styles.ctaSecondary : styles.ctaPrimary} href={s.web} target="_blank" rel="noreferrer">
-              Ukázky práce
+              Naše reference & ukázky
             </a>
           </div>
-          <p className={styles.sign}>{s.name} · {s.company}</p>
+          <p className={styles.sign}>
+            Bc. Adam Mácha ·{" "}
+            <a
+              href="https://www.technologio.eu/"
+              target="_blank"
+              rel="noreferrer"
+              className={styles.signLink}
+            >
+              Technologio.cz
+            </a>
+          </p>
         </section>
       </main>
 
