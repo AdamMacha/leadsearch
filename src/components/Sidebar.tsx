@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { logout } from "@/app/actions";
-import { IconDashboard, IconLogout, IconRadar, IconSearch, IconSettings, IconUsers } from "./icons";
+import { IconDashboard, IconLogout, IconRadar, IconSearch, IconSettings, IconSparkle, IconUsers } from "./icons";
 import styles from "./sidebar.module.css";
 
 const NAV = [
@@ -13,7 +13,7 @@ const NAV = [
   { href: "/settings", label: "Nastavení", icon: IconSettings },
 ];
 
-export function Sidebar({ hot }: { hot: number }) {
+export function Sidebar({ hot, activeModel }: { hot: number; activeModel?: string }) {
   const pathname = usePathname();
   return (
     <aside className={styles.sidebar}>
@@ -40,11 +40,40 @@ export function Sidebar({ hot }: { hot: number }) {
         })}
       </nav>
 
-      <form action={logout} className={styles.footer}>
-        <button className={`btn btn-ghost ${styles.logout}`} id="logout-btn">
-          <IconLogout size={16} /> Odhlásit
-        </button>
-      </form>
+      <div className={styles.footer}>
+        {activeModel && (
+          <Link
+            href="/settings"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "6px 10px",
+              borderRadius: "var(--radius)",
+              backgroundColor: "rgba(255, 255, 255, 0.04)",
+              border: "1px solid var(--border)",
+              color: "var(--muted)",
+              marginBottom: 8,
+              textDecoration: "none",
+              fontSize: "0.78rem",
+            }}
+            title="Klikni pro změnu AI modelu v Nastavení"
+          >
+            <span className="row" style={{ gap: 5 }}>
+              <IconSparkle size={13} style={{ color: "var(--accent)" }} />
+              <span>AI:</span>
+            </span>
+            <span className="mono" style={{ color: "var(--fg)", fontSize: "0.74rem" }}>
+              {activeModel.replace("gemini-", "").replace("-preview", "")}
+            </span>
+          </Link>
+        )}
+        <form action={logout}>
+          <button className={`btn btn-ghost ${styles.logout}`} id="logout-btn">
+            <IconLogout size={16} /> Odhlásit
+          </button>
+        </form>
+      </div>
     </aside>
   );
 }

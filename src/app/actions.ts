@@ -91,10 +91,41 @@ export async function deleteLead(id: string) {
 
 /* ---------- AI ---------- */
 
-export async function generateAuditAction(id: string) {
+import { AI_MODEL_COOKIE, DEFAULT_AI_MODEL } from "@/lib/ai/models";
+
+export async function getActiveAiModelAction(): Promise<string> {
+  const jar = await cookies();
+  return jar.get(AI_MODEL_COOKIE)?.value || process.env.GEMINI_MODEL || DEFAULT_AI_MODEL;
+}
+
+export async function setAiModelAction(model: string) {
+  await guard();
+  const clean = model.trim();
+  if (!clean) throw new Error("Neplatný název AI modelu.");
+  const jar = await cookies();
+  jar.set(AI_MODEL_COOKIE, clean, {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: "lax",
+  });
+  refresh();
+  return { ok: true as const, model: clean };
+}
+
+export async function testAiModelAction(model: string) {
+  await guard();
+  const clean = model.trim();
+  if (!clean) return { ok: false as const, error: "Zadej název modelu." };
+  const { testAiModel } = await import("@/lib/ai/gemini");
+  return testAiModel(clean);
+}
+
+export async function generateAuditAction(id: string, modelOverride?: string) {
   await guard();
   try {
-    await createAudit(id);
+    const jar = await cookies();
+    const model = modelOverride?.trim() || jar.get(AI_MODEL_COOKIE)?.value;
+    await createAudit(id, model);
     refresh();
     return { ok: true as const };
   } catch (e) {
@@ -102,10 +133,12 @@ export async function generateAuditAction(id: string) {
   }
 }
 
-export async function generateOutreachAction(id: string) {
+export async function generateOutreachAction(id: string, modelOverride?: string) {
   await guard();
   try {
-    await createOutreach(id);
+    const jar = await cookies();
+    const model = modelOverride?.trim() || jar.get(AI_MODEL_COOKIE)?.value;
+    await createOutreach(id, model);
     refresh();
     return { ok: true as const };
   } catch (e) {

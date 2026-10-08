@@ -1,10 +1,11 @@
 import "server-only";
 import { auditUrl, config } from "../config";
 import type { AuditContent, Lead, OutreachContent } from "../types";
+import { DEFAULT_AI_MODEL } from "./models";
 
-async function gemini<T>(prompt: string): Promise<T> {
+async function callGeminiApi<T>(prompt: string, model: string): Promise<T> {
   const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${config.geminiModel}:generateContent`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": config.geminiKey! },
@@ -17,10 +18,80 @@ async function gemini<T>(prompt: string): Promise<T> {
     },
   );
   const data = await res.json();
-  if (!res.ok) throw new Error(`Gemini: ${data?.error?.message ?? res.statusText}`);
+  if (!res.ok) {
+    const rawMsg = data?.error?.message ?? res.statusText;
+    const isRateLimit = res.status === 429 || /quota|exhausted|rate limit/i.test(rawMsg);
+    const err = new Error(
+      isRateLimit
+        ? `Limit dotazů pro model ${model} byl vyčerpán (429 Rate Limit / Quota). Přepni na jiný model (např. gemini-3.5-flash-lite).`
+        : `Gemini (${model}): ${rawMsg}`
+    );
+    (err as unknown as { status?: number; isRateLimit?: boolean }).status = res.status;
+    (err as unknown as { status?: number; isRateLimit?: boolean }).isRateLimit = isRateLimit;
+    throw err;
+  }
   const text: string | undefined = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("");
-  if (!text) throw new Error("Gemini vrátil prázdnou odpověď");
+  if (!text) throw new Error(`Gemini (${model}) vrátil prázdnou odpověď`);
   return JSON.parse(text.replace(/^```json\s*|```$/g, "")) as T;
+}
+
+export async function testAiModel(model: string): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
+  if (!config.geminiKey) return { ok: false, latencyMs: 0, error: "Chybí GEMINI_API_KEY" };
+  const t0 = Date.now();
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": config.geminiKey },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: "Odpověz pouze: OK" }] }],
+        }),
+        signal: AbortSignal.timeout(15_000),
+        cache: "no-store",
+      },
+    );
+    const data = await res.json();
+    const latencyMs = Date.now() - t0;
+    if (!res.ok) {
+      const rawMsg = data?.error?.message ?? res.statusText;
+      const isRateLimit = res.status === 429 || /quota|exhausted|rate limit/i.test(rawMsg);
+      return {
+        ok: false,
+        latencyMs,
+        error: isRateLimit
+          ? `Limit dotazů pro model ${model} je vyčerpán (429 Rate Limit). Zvol jiný model.`
+          : `Chyba ${res.status}: ${rawMsg}`,
+      };
+    }
+    return { ok: true, latencyMs };
+  } catch (err) {
+    return { ok: false, latencyMs: Date.now() - t0, error: (err as Error).message };
+  }
+}
+
+async function gemini<T>(prompt: string, requestedModel?: string): Promise<{ data: T; modelUsed: string }> {
+  const preferred = requestedModel?.trim() || config.geminiModel || DEFAULT_AI_MODEL;
+  const candidates = [preferred];
+  if (preferred !== "gemini-3.5-flash-lite") candidates.push("gemini-3.5-flash-lite");
+  if (preferred !== "gemini-3.5-flash") candidates.push("gemini-3.5-flash");
+
+  let lastError: Error | null = null;
+  for (const model of candidates) {
+    try {
+      const data = await callGeminiApi<T>(prompt, model);
+      const modelUsed = model === preferred ? model : `${model} (fallback z ${preferred})`;
+      return { data, modelUsed };
+    } catch (err: unknown) {
+      lastError = err as Error;
+      const isRateLimit = (err as { isRateLimit?: boolean })?.isRateLimit;
+      if (isRateLimit && candidates.length > 1) {
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError ?? new Error("Gemini volání selhalo");
 }
 
 function leadContext(lead: Lead) {
@@ -49,9 +120,9 @@ const SENDER = () =>
   (config.sender.phone ? `, tel. ${config.sender.phone}` : "") +
   (config.sender.email ? `, ${config.sender.email}` : "");
 
-export async function generateAudit(lead: Lead): Promise<AuditContent> {
+export async function generateAudit(lead: Lead, modelOverride?: string): Promise<AuditContent> {
   if (!config.geminiKey) return templateAudit(lead);
-  const out = await gemini<Omit<AuditContent, "generatedAt" | "model">>(`
+  const { data: out, modelUsed } = await gemini<Omit<AuditContent, "generatedAt" | "model">>(`
 Jsi zkušený webový konzultant. Napiš stručný, lidský a konkrétní audit webu pro majitele firmy v češtině.
 Nepoužívej technický žargon, mluv o dopadu na zákazníky a tržby. Žádné přehánění ani vymyšlená čísla.
 Tykání ne – vykej. Délka summary max 3 věty.
@@ -65,14 +136,14 @@ Vrať JSON:
   "summary": "shrnutí stavu webu a hlavní příležitosti",
   "recommendations": [{"title": "...", "description": "1–2 věty"}],   // 3–5 doporučení seřazených podle dopadu
   "benefits": ["přínos 1", "přínos 2", "přínos 3"]                       // co firma získá novým webem
-}`);
-  return { ...out, generatedAt: new Date().toISOString(), model: config.geminiModel };
+}`, modelOverride);
+  return { ...out, generatedAt: new Date().toISOString(), model: modelUsed };
 }
 
-export async function generateOutreach(lead: Lead): Promise<OutreachContent> {
+export async function generateOutreach(lead: Lead, modelOverride?: string): Promise<OutreachContent> {
   if (!config.geminiKey) return templateOutreach(lead);
   const link = lead.auditSlug ? auditUrl(lead.auditSlug) : null;
-  const out = await gemini<Omit<OutreachContent, "generatedAt" | "model">>(`
+  const { data: out, modelUsed } = await gemini<Omit<OutreachContent, "generatedAt" | "model">>(`
 Jsi freelance webový vývojář a píšeš osobní (ne hromadný) první kontakt konkrétní firmě v češtině.
 Pravidla:
 - Krátce, věcně, přátelsky, vykat. E-mail max 120 slov.
@@ -92,8 +163,8 @@ Vrať JSON:
   "email": "text e-mailu včetně oslovení a podpisu",
   "callScript": "scénář na telefonát – úvod, 2–3 body, otázka na závěr (odrážky)",
   "linkedin": "krátká zpráva na LinkedIn (max 300 znaků)"
-}`);
-  return { ...out, generatedAt: new Date().toISOString(), model: config.geminiModel };
+}`, modelOverride);
+  return { ...out, generatedAt: new Date().toISOString(), model: modelUsed };
 }
 
 /* ---------- Fallback templates (no AI key) ---------- */

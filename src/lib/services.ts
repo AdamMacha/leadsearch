@@ -56,24 +56,24 @@ export async function ensureAuditSlug(lead: Lead): Promise<Lead> {
   return repo().updateLead(lead.id, { auditSlug: auditSlugFor(lead.name) });
 }
 
-export async function createAudit(id: string): Promise<Lead> {
+export async function createAudit(id: string, modelOverride?: string): Promise<Lead> {
   const r = repo();
   let lead = await r.getLead(id);
   if (!lead) throw new Error("Lead nenalezen");
   if (!lead.analyzedAt) lead = await analyzeAndSave(id);
   lead = await ensureAuditSlug(lead);
-  const audit = await generateAudit(lead);
+  const audit = await generateAudit(lead, modelOverride);
   lead = await r.updateLead(id, { audit });
   await r.addActivity(id, "ai", `Vygenerován audit (${audit.model})`);
   return lead;
 }
 
-export async function createOutreach(id: string): Promise<Lead> {
+export async function createOutreach(id: string, modelOverride?: string): Promise<Lead> {
   const r = repo();
   let lead = await r.getLead(id);
   if (!lead) throw new Error("Lead nenalezen");
   lead = await ensureAuditSlug(lead);
-  const outreach = await generateOutreach(lead);
+  const outreach = await generateOutreach(lead, modelOverride);
   lead = await r.updateLead(id, { outreach });
   await r.addActivity(id, "ai", `Vygenerován návrh oslovení (${outreach.model})`);
   return lead;

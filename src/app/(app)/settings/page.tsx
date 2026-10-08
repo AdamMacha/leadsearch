@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { connection } from "next/server";
 import { IconCheck, IconExternal } from "@/components/icons";
+import { AI_MODEL_COOKIE, DEFAULT_AI_MODEL } from "@/lib/ai/models";
 import { config, integrationStatus } from "@/lib/config";
 import { repo } from "@/lib/db";
+import { AiModelSettings } from "./AiModelSettings";
 
 export const metadata: Metadata = { title: "Nastavení" };
 
@@ -84,13 +87,15 @@ export default async function SettingsPage() {
   await connection();
   const status = integrationStatus();
   const dbKind = repo().kind;
+  const cookieJar = await cookies();
+  const activeModel = cookieJar.get(AI_MODEL_COOKIE)?.value || process.env.GEMINI_MODEL || DEFAULT_AI_MODEL;
 
   return (
     <div className="page">
       <header className="page-header">
         <div>
           <h1>Nastavení</h1>
-          <p>Stav integrací. Proměnné nastav v <code>.env.local</code> lokálně a ve Vercel → Settings → Environment Variables na produkci.</p>
+          <p>Stav integrací a konfigurace aplikace.</p>
         </div>
       </header>
 
@@ -100,7 +105,8 @@ export default async function SettingsPage() {
         </div>
       )}
 
-      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))" }}>
+      <div className="grid" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
+        <AiModelSettings initialModel={activeModel} />
         {GUIDES.map((g) => {
           const ok = status[g.key];
           return (

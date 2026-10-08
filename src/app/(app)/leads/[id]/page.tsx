@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { IconAlert, IconArrowLeft, IconExternal, IconMap, IconStar } from "@/components/icons";
 import { ScoreRing } from "@/components/ui";
+import { AI_MODEL_COOKIE, DEFAULT_AI_MODEL } from "@/lib/ai/models";
 import { auditUrl, integrationStatus } from "@/lib/config";
 import { repo } from "@/lib/db";
 import { formatDate, hostname } from "@/lib/utils";
@@ -28,6 +30,8 @@ export default async function LeadPage(props: PageProps<"/leads/[id]">) {
   const { id } = await props.params;
   const sp = await props.searchParams;
   const r = repo();
+  const cookieJar = await cookies();
+  const activeModel = cookieJar.get(AI_MODEL_COOKIE)?.value || process.env.GEMINI_MODEL || DEFAULT_AI_MODEL;
   const lead = await r.getLead(id);
   if (!lead) notFound();
   const [activities, hasShot] = await Promise.all([r.listActivities(id), r.getScreenshot(id).then(Boolean)]);
@@ -180,6 +184,7 @@ export default async function LeadPage(props: PageProps<"/leads/[id]">) {
             email={lead.email}
             aiReady={ai}
             analyzed={!!lead.analyzedAt}
+            initialModel={activeModel}
           />
         </div>
 

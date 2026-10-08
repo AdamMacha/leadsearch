@@ -7,6 +7,7 @@ import {
   markEmailSent,
   saveOutreach,
   sendDirectEmailAction,
+  setAiModelAction,
 } from "@/app/actions";
 import {
   IconCheck,
@@ -16,6 +17,7 @@ import {
   IconSend,
   IconSparkle,
 } from "@/components/icons";
+import { AI_MODELS, DEFAULT_AI_MODEL } from "@/lib/ai/models";
 import type { AuditContent, OutreachContent } from "@/lib/types";
 import styles from "./lead.module.css";
 
@@ -30,6 +32,7 @@ export function AiPanel({
   email,
   aiReady,
   analyzed,
+  initialModel,
 }: {
   id: string;
   audit: AuditContent | null;
@@ -39,8 +42,10 @@ export function AiPanel({
   email: string | null;
   aiReady: boolean;
   analyzed: boolean;
+  initialModel?: string;
 }) {
   const [tab, setTab] = useState<Tab>("audit");
+  const [selectedModel, setSelectedModel] = useState(initialModel || DEFAULT_AI_MODEL);
   const [pending, start] = useTransition();
   const [busy, setBusy] = useState<"audit" | "outreach" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -51,11 +56,19 @@ export function AiPanel({
   const [sendSuccess, setSendSuccess] = useState<string | null>(null);
   const [directError, setDirectError] = useState<string | null>(null);
 
+  const handleModelChange = (model: string) => {
+    setSelectedModel(model);
+    setAiModelAction(model).catch(() => {});
+  };
+
   const gen = (kind: "audit" | "outreach") => {
     setBusy(kind);
     setError(null);
     start(async () => {
-      const res = kind === "audit" ? await generateAuditAction(id) : await generateOutreachAction(id);
+      const res =
+        kind === "audit"
+          ? await generateAuditAction(id, selectedModel)
+          : await generateOutreachAction(id, selectedModel);
       if (!res.ok) setError(res.error);
       else if (kind === "outreach") setTab("email");
       setBusy(null);
@@ -102,9 +115,33 @@ export function AiPanel({
 
   return (
     <section className="card">
-      <div className="card-title">
+      <div className="card-title" style={{ flexWrap: "wrap", gap: 10 }}>
         <h2><IconSparkle size={17} /> Audit a oslovení</h2>
-        <span className="small muted">{aiReady ? "Gemini AI" : "šablony (bez AI klíče)"}</span>
+        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+          {aiReady ? (
+            <div className="row" style={{ gap: 6, alignItems: "center" }}>
+              <span className="small muted">AI model:</span>
+              <select
+                className="select select-sm"
+                value={selectedModel}
+                onChange={(e) => handleModelChange(e.target.value)}
+                title="Změna AI modelu (při vyčerpání limitu u jednoho modelu zvol jiný)"
+                style={{ fontSize: "0.82rem", padding: "4px 8px", height: "auto" }}
+              >
+                {AI_MODELS.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.name} ({m.limits.split("·")[0].trim()})
+                  </option>
+                ))}
+                {!AI_MODELS.some((m) => m.id === selectedModel) && (
+                  <option value={selectedModel}>{selectedModel} (vlastní)</option>
+                )}
+              </select>
+            </div>
+          ) : (
+            <span className="small muted">šablony (bez AI klíče)</span>
+          )}
+        </div>
       </div>
 
       {!analyzed && <div className="alert alert-info" style={{ marginBottom: 14 }}>Nejdřív spusť analýzu webu, audit z ní vychází.</div>}
@@ -151,7 +188,10 @@ export function AiPanel({
           {tab === "audit" &&
             (audit ? (
               <div className="stack">
-                <h3>{audit.headline}</h3>
+                <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                  <h3>{audit.headline}</h3>
+                  {audit.model && <span className="badge small">{audit.model}</span>}
+                </div>
                 <p className="text-2">{audit.summary}</p>
                 <ol className="stack" style={{ paddingLeft: 18, gap: 8 }}>
                   {audit.recommendations.map((r, i) => (
