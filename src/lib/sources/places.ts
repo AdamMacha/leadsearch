@@ -23,7 +23,7 @@ interface PlacesResponse {
     id: string;
     displayName?: { text: string };
     formattedAddress?: string;
-    addressComponents?: { longText: string; types: string[] }[];
+    addressComponents?: { longText: string; types?: string[] }[];
     websiteUri?: string;
     nationalPhoneNumber?: string;
     internationalPhoneNumber?: string;
@@ -79,8 +79,9 @@ export async function searchPlaces(
     for (const p of data.places ?? []) {
       if (p.businessStatus && p.businessStatus !== "OPERATIONAL") continue;
       const city =
-        p.addressComponents?.find((c) => c.types.includes("locality"))?.longText ??
-        p.addressComponents?.find((c) => c.types.includes("administrative_area_level_2"))?.longText ??
+        p.addressComponents?.find((c) => c.types?.includes("locality"))?.longText ??
+        p.addressComponents?.find((c) => c.types?.includes("administrative_area_level_2"))?.longText ??
+        p.addressComponents?.find((c) => c.types?.includes("postal_town"))?.longText ??
         null;
       const website = p.websiteUri && !NOT_A_WEBSITE.test(p.websiteUri) ? p.websiteUri : null;
       results.push({
