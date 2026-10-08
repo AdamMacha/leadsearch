@@ -5,8 +5,11 @@ import { repo } from "@/lib/db";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   let hot = 0;
+  let favorites = 0;
   try {
-    hot = (await repo().stats()).hot;
+    const stats = await repo().stats();
+    hot = stats.hot;
+    favorites = stats.favorites ?? 0;
   } catch {
     /* DB not configured – pages show their own error */
   }
@@ -15,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
-      <Sidebar hot={hot} activeModel={activeModel} />
+      <Sidebar hot={hot} favorites={favorites} activeModel={activeModel} />
       <main style={{ flex: 1, minWidth: 0, paddingBottom: 70 }}>{children}</main>
     </div>
   );

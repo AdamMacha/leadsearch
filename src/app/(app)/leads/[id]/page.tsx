@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
+import { FavoriteButton } from "@/components/FavoriteButton";
 import { IconAlert, IconArrowLeft, IconExternal, IconMap, IconStar } from "@/components/icons";
 import { ScoreRing } from "@/components/ui";
 import { AI_MODEL_COOKIE, DEFAULT_AI_MODEL } from "@/lib/ai/models";
@@ -64,7 +65,8 @@ export default async function LeadPage(props: PageProps<"/leads/[id]">) {
             )}
           </div>
         </div>
-        <div className="row">
+        <div className="row" style={{ gap: 8 }}>
+          <FavoriteButton leadId={lead.id} initialFavorite={lead.isFavorite} showText />
           <AnalyzeButton id={lead.id} analyzed={!!lead.analyzedAt} auto={sp.analyze === "1" && !lead.analyzedAt} />
           <DeleteButton id={lead.id} />
         </div>

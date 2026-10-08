@@ -148,6 +148,18 @@ export const localRepo: Repo = {
   async listActivities(leadId) {
     return (await load()).activities.filter((a) => a.leadId === leadId);
   },
+  async getFavoriteIds() {
+    const leads = (await load()).leads;
+    return leads.filter((l) => l.isFavorite).map((l) => l.id);
+  },
+  async toggleFavorite(leadId) {
+    const s = await load();
+    const l = s.leads.find((x) => x.id === leadId);
+    if (!l) throw new Error("Lead nenalezen");
+    l.isFavorite = !l.isFavorite;
+    await save();
+    return Boolean(l.isFavorite);
+  },
   async stats() {
     const leads = (await load()).leads;
     const byStatus = Object.fromEntries(LEAD_STATUSES.map((s) => [s, 0])) as DashboardStats["byStatus"];
@@ -157,6 +169,7 @@ export const localRepo: Repo = {
       analyzed: leads.filter((l) => l.analyzedAt).length,
       noWebsite: leads.filter((l) => !l.website).length,
       hot: leads.filter((l) => (l.priority ?? 0) >= 70).length,
+      favorites: leads.filter((l) => l.isFavorite).length,
       auditViews: leads.reduce((sum, l) => sum + l.auditViews, 0),
       byStatus,
     };

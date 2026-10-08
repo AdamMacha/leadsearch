@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState, useCallback, useState } from "react";
 import { addManualLeadAction } from "@/app/actions";
+import { FavoriteButton } from "@/components/FavoriteButton";
 import { IconGlobe, IconPlus, IconSearch, IconSparkle, IconStar, IconZap } from "@/components/icons";
 import { PriorityPill } from "@/components/ui";
 import { useAnalyzeQueue } from "@/components/useAnalyzeQueue";
@@ -138,6 +139,7 @@ export function SearchClient({ placesReady }: { placesReady: boolean }) {
             <table className="table">
               <thead>
                 <tr>
+                  <th style={{ width: 34, paddingRight: 0 }}></th>
                   <th>Firma</th>
                   <th>Web</th>
                   <th>Hodnocení</th>
@@ -150,6 +152,9 @@ export function SearchClient({ placesReady }: { placesReady: boolean }) {
                   const st = queue.state[l.id];
                   return (
                     <tr key={l.id}>
+                      <td style={{ width: 34, paddingRight: 0, verticalAlign: "middle" }}>
+                        <FavoriteButton leadId={l.id} initialFavorite={l.isFavorite} size={16} />
+                      </td>
                       <td>
                         <Link href={`/leads/${l.id}`} className="link" style={{ fontWeight: 600 }}>{l.name}</Link>
                         <div className="small muted">{[l.category, l.city].filter(Boolean).join(" · ")}</div>

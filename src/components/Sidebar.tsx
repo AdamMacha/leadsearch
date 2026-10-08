@@ -1,20 +1,82 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/actions";
-import { IconDashboard, IconLogout, IconRadar, IconSearch, IconSettings, IconSparkle, IconUsers } from "./icons";
+import { IconDashboard, IconLogout, IconRadar, IconSearch, IconSettings, IconSparkle, IconStar, IconUsers } from "./icons";
 import styles from "./sidebar.module.css";
 
 const NAV = [
   { href: "/", label: "Přehled", icon: IconDashboard },
   { href: "/search", label: "Hledat firmy", icon: IconSearch },
   { href: "/leads", label: "Leady", icon: IconUsers },
+  { href: "/leads?favorite=1", label: "Oblíbené", icon: IconStar },
   { href: "/settings", label: "Nastavení", icon: IconSettings },
 ];
 
-export function Sidebar({ hot, activeModel }: { hot: number; activeModel?: string }) {
+function NavLinks({ hot, favorites }: { hot: number; favorites: number }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const isFav = searchParams.get("favorite") === "1";
+
+  return (
+    <nav className={styles.nav}>
+      {NAV.map(({ href, label, icon: Icon }) => {
+        let active = false;
+        if (href === "/") {
+          active = pathname === "/";
+        } else if (href === "/leads?favorite=1") {
+          active = pathname === "/leads" && isFav;
+        } else if (href === "/leads") {
+          active = pathname.startsWith("/leads") && !isFav;
+        } else {
+          active = pathname.startsWith(href);
+        }
+
+        const count = href === "/leads" ? hot : href === "/leads?favorite=1" ? favorites : 0;
+        const isFavLink = href === "/leads?favorite=1";
+
+        return (
+          <Link
+            key={href}
+            href={href}
+            className={`${styles.link} ${active ? styles.active : ""}`}
+            id={`nav-${href.replace(/[^a-z0-9]/gi, "-") || "home"}`}
+          >
+            <Icon
+              size={17}
+              style={isFavLink && (active || favorites > 0) ? { color: "#f59e0b" } : undefined}
+            />
+            <span>{label}</span>
+            {count > 0 && (
+              <span
+                className={styles.count}
+                style={
+                  isFavLink
+                    ? { backgroundColor: "rgba(245, 158, 11, 0.15)", color: "#f59e0b" }
+                    : undefined
+                }
+              >
+                {count}
+              </span>
+            )}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
+export function Sidebar({
+  hot,
+  favorites = 0,
+  activeModel,
+}: {
+  hot: number;
+  favorites?: number;
+  activeModel?: string;
+}) {
   return (
     <aside className={styles.sidebar}>
       <Link href="/" className={styles.brand}>
@@ -27,18 +89,9 @@ export function Sidebar({ hot, activeModel }: { hot: number; activeModel?: strin
         </span>
       </Link>
 
-      <nav className={styles.nav}>
-        {NAV.map(({ href, label, icon: Icon }) => {
-          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
-          return (
-            <Link key={href} href={href} className={`${styles.link} ${active ? styles.active : ""}`} id={`nav-${href.slice(1) || "home"}`}>
-              <Icon size={17} />
-              <span>{label}</span>
-              {href === "/leads" && hot > 0 && <span className={styles.count}>{hot}</span>}
-            </Link>
-          );
-        })}
-      </nav>
+      <Suspense fallback={<nav className={styles.nav} />}>
+        <NavLinks hot={hot} favorites={favorites} />
+      </Suspense>
 
       <div className={styles.footer}>
         {activeModel && (

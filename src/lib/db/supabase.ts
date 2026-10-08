@@ -86,8 +86,46 @@ function check<T>(res: { data: T; error: { message: string } | null }): T {
 export const supabaseRepo: Repo = {
   kind: "supabase",
 
+  async getFavoriteIds() {
+    const res = await db().from("activities").select("lead_id").eq("type", "favorite");
+    const data = (check(res) as Row[]) ?? [];
+    return data.map((r) => r.lead_id as string);
+  },
+
+  async toggleFavorite(leadId: string) {
+    const existing = await db()
+      .from("activities")
+      .select("id")
+      .eq("lead_id", leadId)
+      .eq("type", "favorite")
+      .maybeSingle();
+    if (existing.data) {
+      check(await db().from("activities").delete().eq("lead_id", leadId).eq("type", "favorite"));
+      return false;
+    } else {
+      check(
+        await db().from("activities").insert({
+          lead_id: leadId,
+          type: "favorite",
+          content: "Přidáno do oblíbených",
+        }),
+      );
+      return true;
+    }
+  },
+
   async listLeads(f = {}) {
+    const favIds = await this.getFavoriteIds();
+    const favSet = new Set(favIds);
+
+    if (f.favorite && favIds.length === 0) {
+      return [];
+    }
+
     let q = db().from("leads").select(LEAD_COLUMNS);
+    if (f.favorite) {
+      q = q.in("id", favIds);
+    }
     if (f.q) {
       const s = f.q.replace(/[%,()]/g, " ");
       q = q.or(`name.ilike.%${s}%,city.ilike.%${s}%,category.ilike.%${s}%,website.ilike.%${s}%`);
@@ -103,12 +141,26 @@ export const supabaseRepo: Repo = {
     const col = { priority: "priority", need: "need_score", reviews: "reviews_count", created: "created_at", name: "name" }[sort];
     q = q.order(col, { ascending: sort === "name", nullsFirst: false });
     q = q.limit(f.limit ?? 1000);
-    return (check(await q) as Row[]).map(toLead);
+    const rows = check(await q) as Row[];
+    return rows.map((r) => {
+      const l = toLead(r);
+      l.isFavorite = favSet.has(l.id);
+      return l;
+    });
   },
 
   async getLead(id) {
     const data = check(await db().from("leads").select(LEAD_COLUMNS).eq("id", id).maybeSingle());
-    return data ? toLead(data as Row) : null;
+    if (!data) return null;
+    const l = toLead(data as Row);
+    const isFav = await db()
+      .from("activities")
+      .select("id")
+      .eq("lead_id", id)
+      .eq("type", "favorite")
+      .maybeSingle();
+    l.isFavorite = Boolean(isFav.data);
+    return l;
   },
 
   async getLeadBySlug(slug) {
@@ -193,9 +245,12 @@ export const supabaseRepo: Repo = {
   },
 
   async stats() {
-    const data = check(
-      await db().from("leads").select("status,website,analyzed_at,priority,audit_views").limit(100000),
-    ) as Row[];
+    const [leadsRes, favRes] = await Promise.all([
+      db().from("leads").select("status,website,analyzed_at,priority,audit_views").limit(100000),
+      db().from("activities").select("id", { count: "exact", head: true }).eq("type", "favorite"),
+    ]);
+    const data = check(leadsRes) as Row[];
+    const favorites = favRes.count ?? 0;
     const byStatus = Object.fromEntries(LEAD_STATUSES.map((s) => [s, 0])) as DashboardStats["byStatus"];
     let analyzed = 0, noWebsite = 0, hot = 0, auditViews = 0;
     for (const r of data) {
@@ -205,7 +260,7 @@ export const supabaseRepo: Repo = {
       if (((r.priority as number) ?? 0) >= 70) hot++;
       auditViews += (r.audit_views as number) ?? 0;
     }
-    return { total: data.length, analyzed, noWebsite, hot, auditViews, byStatus };
+    return { total: data.length, analyzed, noWebsite, hot, favorites, auditViews, byStatus };
   },
 };
 

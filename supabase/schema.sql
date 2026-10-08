@@ -57,6 +57,7 @@ create table if not exists activities (
 );
 
 create index if not exists activities_lead_idx on activities (lead_id, created_at desc);
+create index if not exists activities_type_idx on activities (type);
 
 -- Přístup jen přes service role klíč ze serveru, veřejný (anon) přístup zakázán
 alter table searches enable row level security;

@@ -31,12 +31,18 @@ export interface Repo {
   addActivity(leadId: string, type: ActivityType, content: string): Promise<Activity>;
   listActivities(leadId: string): Promise<Activity[]>;
 
+  toggleFavorite(leadId: string): Promise<boolean>;
+  getFavoriteIds(): Promise<string[]>;
+
   stats(): Promise<DashboardStats>;
 }
 
 /** Shared in-memory filtering/sorting used by the local repo (and as reference for Supabase). */
 export function applyFilter(leads: Lead[], f: LeadFilter = {}): Lead[] {
   let out = leads;
+  if (f.favorite) {
+    out = out.filter((l) => Boolean(l.isFavorite));
+  }
   if (f.q) {
     const q = f.q.toLowerCase();
     out = out.filter((l) =>

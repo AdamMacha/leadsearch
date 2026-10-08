@@ -40,6 +40,8 @@ export const IconMail = (p: P) =>
   base(p, <><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M22 6l-10 7L2 6" /></>);
 export const IconStar = (p: P) =>
   base(p, <path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z" fill="currentColor" stroke="none" />);
+export const IconStarOutline = (p: P) =>
+  base(p, <path d="M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8L12 17.8 5.8 21l1.2-6.8-5-4.9 6.9-1z" fill="none" stroke="currentColor" />);
 export const IconMap = (p: P) =>
   base(p, <><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" /></>);
 export const IconSparkle = (p: P) =>

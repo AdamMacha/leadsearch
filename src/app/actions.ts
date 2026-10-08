@@ -89,6 +89,13 @@ export async function deleteLead(id: string) {
   redirect("/leads");
 }
 
+export async function toggleFavoriteAction(id: string) {
+  await guard();
+  const isFavorite = await repo().toggleFavorite(id);
+  refresh();
+  return { ok: true as const, isFavorite };
+}
+
 /* ---------- AI ---------- */
 
 import { AI_MODEL_COOKIE, DEFAULT_AI_MODEL } from "@/lib/ai/models";

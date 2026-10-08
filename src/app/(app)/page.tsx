@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { connection } from "next/server";
-import { IconAlert, IconEye, IconFlame, IconGlobe, IconSearch, IconUsers, IconZap } from "@/components/icons";
+import { IconAlert, IconEye, IconFlame, IconGlobe, IconSearch, IconStar, IconUsers, IconZap } from "@/components/icons";
 import { PriorityPill, StatusBadge } from "@/components/ui";
 import { integrationStatus } from "@/lib/config";
 import { repo } from "@/lib/db";
@@ -59,9 +59,10 @@ export default async function DashboardPage() {
       )}
 
       <section className={styles.stats}>
-        <Stat icon={<IconUsers size={18} />} label="Leadů celkem" value={stats.total} sub={`${stats.analyzed} analyzováno`} />
-        <Stat icon={<IconFlame size={18} />} label="Horké leady" value={stats.hot} sub="priorita 70+" tone="bad" />
-        <Stat icon={<IconGlobe size={18} />} label="Bez webu" value={stats.noWebsite} sub="ideální kandidáti" tone="warn" />
+        <Stat icon={<IconUsers size={18} />} label="Leadů celkem" value={stats.total} sub={`${stats.analyzed} analyzováno`} href="/leads" />
+        <Stat icon={<IconStar size={18} style={{ color: "#f59e0b" }} />} label="Oblíbené leady" value={stats.favorites ?? 0} sub="připraveno k oslovení" href="/leads?favorite=1" />
+        <Stat icon={<IconFlame size={18} />} label="Horké leady" value={stats.hot} sub="priorita 70+" tone="bad" href="/leads?minPriority=70" />
+        <Stat icon={<IconGlobe size={18} />} label="Bez webu" value={stats.noWebsite} sub="ideální kandidáti" tone="warn" href="/leads?website=none" />
         <Stat icon={<IconEye size={18} />} label="Zobrazení auditů" value={stats.auditViews} sub="otevřeno klienty" tone="good" />
       </section>
 
@@ -177,8 +178,22 @@ export default async function DashboardPage() {
   );
 }
 
-function Stat({ icon, label, value, sub, tone }: { icon: React.ReactNode; label: string; value: number; sub: string; tone?: "good" | "warn" | "bad" }) {
-  return (
+function Stat({
+  icon,
+  label,
+  value,
+  sub,
+  tone,
+  href,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  sub: string;
+  tone?: "good" | "warn" | "bad";
+  href?: string;
+}) {
+  const inner = (
     <div className={`card ${styles.stat}`} data-tone={tone}>
       <span className={styles.statIcon}>{icon}</span>
       <span className="small text-2">{label}</span>
@@ -186,4 +201,12 @@ function Stat({ icon, label, value, sub, tone }: { icon: React.ReactNode; label:
       <span className="small muted">{sub}</span>
     </div>
   );
+  if (href) {
+    return (
+      <Link href={href} style={{ textDecoration: "none", color: "inherit", display: "contents" }}>
+        {inner}
+      </Link>
+    );
+  }
+  return inner;
 }

@@ -122,6 +122,7 @@ const TYPE_LABEL: Record<Activity["type"], string> = {
   ai: "AI",
   audit_view: "Audit otevřen",
   system: "Systém",
+  favorite: "Oblíbené",
 };
 
 export function ActivityLog({ id, activities }: { id: string; activities: Activity[] }) {

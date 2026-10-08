@@ -119,6 +119,7 @@ export interface Lead {
   auditViews: number;
   auditLastViewedAt: string | null;
   nextActionAt: string | null;
+  isFavorite?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -149,7 +150,7 @@ export interface Search {
   createdAt: string;
 }
 
-export type ActivityType = "note" | "status" | "email" | "call" | "ai" | "audit_view" | "system";
+export type ActivityType = "note" | "status" | "email" | "call" | "ai" | "audit_view" | "system" | "favorite";
 
 export interface Activity {
   id: string;
@@ -168,6 +169,7 @@ export interface LeadFilter {
   searchId?: string;
   sort?: "priority" | "need" | "reviews" | "created" | "name";
   limit?: number;
+  favorite?: boolean;
 }
 
 export interface DashboardStats {
@@ -175,6 +177,7 @@ export interface DashboardStats {
   analyzed: number;
   noWebsite: number;
   hot: number;
+  favorites: number;
   auditViews: number;
   byStatus: Record<LeadStatus, number>;
 }

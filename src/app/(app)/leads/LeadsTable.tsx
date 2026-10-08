@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
+import { FavoriteButton } from "@/components/FavoriteButton";
 import { IconEye, IconGlobe, IconMail, IconPhone, IconStar, IconZap } from "@/components/icons";
 import { PriorityPill, ScoreRing, StatusBadge } from "@/components/ui";
 import { useAnalyzeQueue } from "@/components/useAnalyzeQueue";
@@ -47,6 +48,7 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
         <table className="table">
           <thead>
             <tr>
+              <th style={{ width: 34, paddingRight: 0 }}></th>
               <th>Firma</th>
               <th>Kontakt</th>
               <th>Hodnocení</th>
@@ -60,6 +62,9 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
               const st = queue.state[l.id];
               return (
                 <tr key={l.id} style={{ cursor: "pointer" }} onClick={() => router.push(`/leads/${l.id}`)}>
+                  <td style={{ width: 34, paddingRight: 0, verticalAlign: "middle" }}>
+                    <FavoriteButton leadId={l.id} initialFavorite={l.isFavorite} size={16} />
+                  </td>
                   <td style={{ maxWidth: 320 }}>
                     <Link href={`/leads/${l.id}`} style={{ fontWeight: 600 }} onClick={(e) => e.stopPropagation()}>
                       {l.name}
