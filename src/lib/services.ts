@@ -33,11 +33,14 @@ export async function addManualLead(input: Pick<NewLead, "name" | "website" | "c
   return leads[0];
 }
 
-export async function analyzeAndSave(id: string): Promise<Lead> {
+export async function analyzeAndSave(id: string, options?: { pageSpeed?: boolean }): Promise<Lead> {
   const r = repo();
   const lead = await r.getLead(id);
   if (!lead) throw new Error("Lead nenalezen");
-  const res = await analyzeLead(lead, { pageSpeed: true, pageSpeedKey: config.pageSpeedKey });
+  const res = await analyzeLead(lead, {
+    pageSpeed: options?.pageSpeed !== false,
+    pageSpeedKey: config.pageSpeedKey,
+  });
   const updated = await r.updateLead(id, {
     analysis: res.analysis,
     analyzedAt: res.analysis.analyzedAt,
@@ -90,5 +93,38 @@ export async function createOutreach(id: string, modelOverride?: string): Promis
   const outreach = await generateOutreach(lead, modelOverride);
   lead = await r.updateLead(id, { outreach });
   await r.addActivity(id, "ai", `Vygenerován návrh oslovení (${outreach.model})`);
+  return lead;
+}
+
+export async function createAuditAndOutreach(
+  id: string,
+  modelOverride?: string,
+  options?: { pageSpeed?: boolean }
+): Promise<Lead> {
+  const r = repo();
+  let lead = await r.getLead(id);
+  if (!lead) throw new Error("Lead nenalezen");
+  if (!lead.analyzedAt) lead = await analyzeAndSave(id, options);
+  lead = await ensureAuditSlug(lead);
+
+  const needAudit = !lead.audit;
+  const needOutreach = !lead.outreach;
+
+  if (!needAudit && !needOutreach) return lead;
+
+  // Run Gemini calls in parallel to save 5-8 seconds per lead
+  const [audit, outreach] = await Promise.all([
+    needAudit ? generateAudit(lead, modelOverride) : Promise.resolve(lead.audit!),
+    needOutreach ? generateOutreach(lead, modelOverride) : Promise.resolve(lead.outreach!),
+  ]);
+
+  lead = await r.updateLead(id, {
+    ...(needAudit ? { audit } : {}),
+    ...(needOutreach ? { outreach } : {}),
+  });
+
+  if (needAudit) await r.addActivity(id, "ai", `Vygenerován audit (${audit.model})`);
+  if (needOutreach) await r.addActivity(id, "ai", `Vygenerován návrh oslovení (${outreach.model})`);
+
   return lead;
 }

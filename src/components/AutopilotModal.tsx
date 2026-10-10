@@ -39,6 +39,8 @@ export function AutopilotModal({
   const [minNeedScore, setMinNeedScore] = useState<number>(35);
   const [skipNoEmail, setSkipNoEmail] = useState<boolean>(true);
   const [delaySec, setDelaySec] = useState<number>(4);
+  const [concurrency, setConcurrency] = useState<number>(3);
+  const [fastMode, setFastMode] = useState<boolean>(false);
   const [limitCount, setLimitCount] = useState<number>(Math.min(10, eligible.length || 10));
 
   const [running, setRunning] = useState(false);
@@ -101,69 +103,81 @@ export function AutopilotModal({
       errors: 0,
     });
 
-    addLog("Autopilot", "running", `Zahajuji dávku pro ${toProcess.length} firem (${mode === "full" ? "Plný automat s odesláním" : "Pouze příprava"})…`);
+    const workerCount = mode === "full" ? 1 : Math.min(concurrency, toProcess.length);
+    const queue = [...toProcess];
+    let processedSoFar = 0;
 
-    for (let i = 0; i < toProcess.length; i++) {
-      if (cancelledRef.current) {
-        addLog("Autopilot", "skipped", "Běh autopilota byl uživatelem zastaven.");
-        break;
-      }
+    addLog(
+      "Autopilot",
+      "running",
+      `Zahajuji dávku pro ${toProcess.length} firem (${mode === "full" ? "Plný automat s odesláním" : `Poloautomat (${workerCount} paralelní vlákna)`}${fastMode ? " · Bleskový režim" : ""})…`
+    );
 
-      const lead = toProcess[i];
-      setCurrentLeadName(lead.name);
-      setProgress((p) => ({ ...p, current: i + 1 }));
+    const worker = async () => {
+      while (queue.length > 0 && !cancelledRef.current) {
+        const lead = queue.shift();
+        if (!lead) break;
 
-      addLog(lead.name, "running", "Analyzuji web a připravuji rozbor…");
+        setCurrentLeadName(lead.name);
+        addLog(lead.name, "running", "Analyzuji web a připravuji rozbor…");
 
-      try {
-        const res = await fetch(`/api/leads/${lead.id}/autopilot`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            autoSend: mode === "full",
-            minNeedScore,
-            skipNoEmail,
-          }),
-        });
+        try {
+          const res = await fetch(`/api/leads/${lead.id}/autopilot`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              autoSend: mode === "full",
+              minNeedScore,
+              skipNoEmail,
+              fastMode,
+            }),
+          });
 
-        const data = await res.json();
+          const data = await res.json();
 
-        if (!res.ok) {
-          throw new Error(data.reason || data.error || "Neznámá chyba serveru");
+          if (!res.ok) {
+            throw new Error(data.reason || data.error || "Neznámá chyba serveru");
+          }
+
+          if (data.lead && onDoneLead) {
+            onDoneLead(data.lead);
+          }
+
+          processedSoFar++;
+          setProgress((p) => ({ ...p, current: processedSoFar }));
+
+          if (data.status === "sent") {
+            setProgress((p) => ({ ...p, sent: p.sent + 1 }));
+            addLog(
+              lead.name,
+              "sent",
+              `Rozbor vytvořen & e-mail úspěšně odeslán na ${data.recipient || lead.email}`
+            );
+          } else if (data.status === "prepared") {
+            setProgress((p) => ({ ...p, prepared: p.prepared + 1 }));
+            addLog(
+              lead.name,
+              "prepared",
+              `Rozbor a oslovení připraveno (web.technologio.eu/${data.lead?.auditSlug || ""})`
+            );
+          } else if (data.status === "skipped") {
+            setProgress((p) => ({ ...p, skipped: p.skipped + 1 }));
+            addLog(lead.name, "skipped", `Přeskočeno: ${data.reason || "Nesplňuje kritéria"}`);
+          }
+        } catch (err) {
+          processedSoFar++;
+          setProgress((p) => ({ ...p, errors: p.errors + 1, current: processedSoFar }));
+          addLog(lead.name, "error", `Chyba: ${(err as Error).message}`);
         }
 
-        if (data.lead && onDoneLead) {
-          onDoneLead(data.lead);
+        // Throttle delay between items only in full mode with email sending
+        if (mode === "full" && delaySec > 0 && queue.length > 0 && !cancelledRef.current) {
+          await sleep(delaySec * 1000);
         }
-
-        if (data.status === "sent") {
-          setProgress((p) => ({ ...p, sent: p.sent + 1 }));
-          addLog(
-            lead.name,
-            "sent",
-            `Rozbor vytvořen & e-mail úspěšně odeslán na ${data.recipient || lead.email}`
-          );
-        } else if (data.status === "prepared") {
-          setProgress((p) => ({ ...p, prepared: p.prepared + 1 }));
-          addLog(
-            lead.name,
-            "prepared",
-            `Rozbor a oslovení připraveno (web.technologio.eu/${data.lead?.auditSlug || ""})`
-          );
-        } else if (data.status === "skipped") {
-          setProgress((p) => ({ ...p, skipped: p.skipped + 1 }));
-          addLog(lead.name, "skipped", `Přeskočeno: ${data.reason || "Nesplňuje kritéria"}`);
-        }
-      } catch (err) {
-        setProgress((p) => ({ ...p, errors: p.errors + 1 }));
-        addLog(lead.name, "error", `Chyba: ${(err as Error).message}`);
       }
+    };
 
-      // Throttle delay between items
-      if (i < toProcess.length - 1 && !cancelledRef.current && delaySec > 0) {
-        await sleep(delaySec * 1000);
-      }
-    }
+    await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
     setRunning(false);
     setFinished(true);
@@ -279,18 +293,33 @@ export function AutopilotModal({
               </div>
 
               <div className={styles.configGrid}>
-                <div>
-                  <label className="label">Pauza mezi odesláním</label>
-                  <select
-                    className="select"
-                    value={delaySec}
-                    onChange={(e) => setDelaySec(Number(e.target.value))}
-                  >
-                    <option value={2}>2 sekundy (Rychlé)</option>
-                    <option value={4}>4 sekundy (Doporučeno)</option>
-                    <option value={8}>8 sekund (Bezpečné pro SMTP)</option>
-                  </select>
-                </div>
+                {mode === "full" ? (
+                  <div>
+                    <label className="label">Pauza mezi odesláním (SMTP)</label>
+                    <select
+                      className="select"
+                      value={delaySec}
+                      onChange={(e) => setDelaySec(Number(e.target.value))}
+                    >
+                      <option value={2}>2 sekundy (Rychlé)</option>
+                      <option value={4}>4 sekundy (Doporučeno)</option>
+                      <option value={8}>8 sekund (Bezpečné pro SMTP)</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="label">Rychlost přípravy (souběžnost)</label>
+                    <select
+                      className="select"
+                      value={concurrency}
+                      onChange={(e) => setConcurrency(Number(e.target.value))}
+                    >
+                      <option value={2}>2 firmy současně</option>
+                      <option value={3}>3 firmy současně (Doporučeno)</option>
+                      <option value={4}>4 firmy současně (Maximální rychlost)</option>
+                    </select>
+                  </div>
+                )}
 
                 <div style={{ alignSelf: "end", paddingBottom: 6 }}>
                   <label className={styles.checkboxRow}>
@@ -302,6 +331,22 @@ export function AutopilotModal({
                     <span>Přeskočit firmy bez e-mailu</span>
                   </label>
                 </div>
+              </div>
+
+              <div style={{ marginTop: 10, padding: "10px 12px", background: "var(--bg-2)", borderRadius: 8, border: "1px solid var(--border)" }}>
+                <label className={styles.checkboxRow} style={{ cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={fastMode}
+                    onChange={(e) => setFastMode(e.target.checked)}
+                  />
+                  <span>
+                    ⚡ <strong>Bleskový režim</strong> (vynechá Google PageSpeed, zkrátí přípravu na ~2 s / firmu)
+                  </span>
+                </label>
+                <p className="small muted" style={{ margin: "4px 0 0 24px", lineHeight: 1.35 }}>
+                  Google Lighthouse měření trvá 15–25 s na web. V bleskovém režimu se web prověří okamžitě a 20 firem zabere pod 40 sekund.
+                </p>
               </div>
 
               <div

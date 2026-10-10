@@ -35,7 +35,7 @@ export async function runPageSpeed(
 
   try {
     const res = await fetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${params}`, {
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(25_000),
       cache: "no-store",
     });
     const data = (await res.json()) as PsiResponse;

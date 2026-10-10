@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { config, auditUrl } from "@/lib/config";
 import { repo } from "@/lib/db";
 import { notifyTelegram } from "@/lib/notify";
-import { analyzeAndSave, createAudit, createOutreach } from "@/lib/services";
+import { analyzeAndSave, createAuditAndOutreach } from "@/lib/services";
 
 export const maxDuration = 120;
 
@@ -14,6 +14,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/leads/[id]/
 
   const body = await request.json().catch(() => ({}));
   const autoSend = Boolean(body.autoSend);
+  const fastMode = Boolean(body.fastMode);
   const minNeedScore = typeof body.minNeedScore === "number" ? body.minNeedScore : 35;
   const skipNoEmail = body.skipNoEmail !== false;
   const modelOverride = typeof body.modelOverride === "string" ? body.modelOverride.trim() : undefined;
@@ -31,7 +32,7 @@ export async function POST(request: Request, ctx: RouteContext<"/api/leads/[id]/
   // 2. Analyze website if not yet analyzed
   try {
     if (!lead.analyzedAt) {
-      lead = await analyzeAndSave(id);
+      lead = await analyzeAndSave(id, { pageSpeed: !fastMode });
     }
   } catch (err) {
     return NextResponse.json({
@@ -61,30 +62,16 @@ export async function POST(request: Request, ctx: RouteContext<"/api/leads/[id]/
     });
   }
 
-  // 4. Create Audit if missing
+  // 4. Create Audit & Outreach concurrently in parallel
   try {
-    if (!lead.audit) {
-      lead = await createAudit(id, modelOverride);
+    if (!lead.audit || !lead.outreach) {
+      lead = await createAuditAndOutreach(id, modelOverride, { pageSpeed: !fastMode });
     }
   } catch (err) {
     return NextResponse.json({
       ok: false,
       status: "error" as const,
-      reason: `Chyba při tvorbě rozboru: ${(err as Error).message}`,
-      lead,
-    }, { status: 500 });
-  }
-
-  // 5. Create Outreach if missing
-  try {
-    if (!lead.outreach) {
-      lead = await createOutreach(id, modelOverride);
-    }
-  } catch (err) {
-    return NextResponse.json({
-      ok: false,
-      status: "error" as const,
-      reason: `Chyba při tvorbě oslovení: ${(err as Error).message}`,
+      reason: `Chyba při tvorbě materiálů: ${(err as Error).message}`,
       lead,
     }, { status: 500 });
   }
