@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useActionState, useCallback, useState } from "react";
 import { addManualLeadAction } from "@/app/actions";
+import { AutopilotModal } from "@/components/AutopilotModal";
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { IconGlobe, IconPlus, IconSearch, IconSparkle, IconStar, IconZap } from "@/components/icons";
 import { PriorityPill } from "@/components/ui";
@@ -28,6 +29,7 @@ export function SearchClient({ placesReady }: { placesReady: boolean }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ leads: Lead[]; inserted: number } | null>(null);
+  const [showAutopilot, setShowAutopilot] = useState(false);
 
   const onDone = useCallback((lead: Lead) => {
     setResult((r) => (r ? { ...r, leads: r.leads.map((l) => (l.id === lead.id ? lead : l)) } : r));
@@ -115,18 +117,31 @@ export function SearchClient({ placesReady }: { placesReady: boolean }) {
               <h2>{leads.length} firem nalezeno</h2>
               <p className="small muted">{result.inserted} nových, {leads.length - result.inserted} už v databázi</p>
             </div>
-            <div className="row">
-              {queue.running && (
-                <span className="small text-2 row" style={{ gap: 8 }}>
-                  <span className="spinner" /> Analyzuji {queue.progress.done}/{queue.progress.total}
-                </span>
-              )}
+            <div className="row" style={{ gap: 8 }}>
               {queue.running ? (
-                <button className="btn" onClick={queue.cancel}>Zastavit</button>
+                <>
+                  <span className="small text-2 row" style={{ gap: 8 }}>
+                    <span className="spinner" /> Analyzuji {queue.progress.done}/{queue.progress.total}
+                  </span>
+                  <button type="button" className="btn" onClick={queue.cancel}>Zastavit</button>
+                </>
               ) : (
-                <button className="btn btn-primary" disabled={unanalyzed.length === 0} onClick={() => queue.run(unanalyzed)} id="analyze-all">
-                  <IconZap size={16} /> Analyzovat {unanalyzed.length > 0 ? `(${unanalyzed.length})` : "vše"}
-                </button>
+                <>
+                  {unanalyzed.length > 0 && (
+                    <button type="button" className="btn btn-sm" onClick={() => queue.run(unanalyzed)} id="analyze-all">
+                      <IconZap size={14} /> Analyzovat ({unanalyzed.length})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={() => setShowAutopilot(true)}
+                    id="autopilot-btn"
+                    style={{ background: "linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)", color: "white" }}
+                  >
+                    <IconZap size={15} /> Spustit Autopilot
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -203,6 +218,13 @@ export function SearchClient({ placesReady }: { placesReady: boolean }) {
       )}
 
       <ManualLead />
+
+      <AutopilotModal
+        leads={leads}
+        isOpen={showAutopilot}
+        onClose={() => setShowAutopilot(false)}
+        onDoneLead={onDone}
+      />
     </div>
   );
 }

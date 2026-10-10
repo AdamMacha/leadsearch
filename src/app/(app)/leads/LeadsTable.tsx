@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
+import { AutopilotModal } from "@/components/AutopilotModal";
 import { FavoriteButton } from "@/components/FavoriteButton";
 import { IconEye, IconGlobe, IconMail, IconPhone, IconStar, IconZap } from "@/components/icons";
 import { PriorityPill, ScoreRing, StatusBadge } from "@/components/ui";
@@ -15,6 +16,10 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
   const onDone = useCallback(() => router.refresh(), [router]);
   const queue = useAnalyzeQueue(onDone);
   const unanalyzed = leads.filter((l) => !l.analyzedAt).map((l) => l.id);
+  const [showAutopilot, setShowAutopilot] = useState(false);
+  const uncontactedCount = leads.filter(
+    (l) => l.status !== "contacted" && l.status !== "replied" && l.status !== "won"
+  ).length;
 
   if (leads.length === 0) {
     return (
@@ -29,21 +34,33 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
 
   return (
     <section className="card" style={{ padding: 0 }}>
-      {unanalyzed.length > 0 && (
-        <div className="row" style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", justifyContent: "space-between" }}>
-          <span className="small text-2">{unanalyzed.length} leadů ještě není analyzováno.</span>
-          {queue.running ? (
+      <div className="row" style={{ padding: "14px 18px", borderBottom: "1px solid var(--border)", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+        <span className="small text-2">
+          Zobrazeno <strong>{leads.length}</strong> firem {unanalyzed.length > 0 ? `(${unanalyzed.length} neanalyzováno)` : ""}
+        </span>
+        <div className="row" style={{ gap: 8 }}>
+          {unanalyzed.length > 0 && !queue.running && (
+            <button className="btn btn-sm" onClick={() => queue.run(unanalyzed)} id="leads-analyze-all">
+              <IconZap size={14} /> Analyzovat ({unanalyzed.length})
+            </button>
+          )}
+          {queue.running && (
             <span className="row small text-2" style={{ gap: 8 }}>
               <span className="spinner" /> {queue.progress.done}/{queue.progress.total}
               <button className="btn btn-sm" onClick={queue.cancel}>Zastavit</button>
             </span>
-          ) : (
-            <button className="btn btn-sm btn-primary" onClick={() => queue.run(unanalyzed)} id="leads-analyze-all">
-              <IconZap size={14} /> Analyzovat
-            </button>
           )}
+          <button
+            type="button"
+            className="btn btn-sm btn-primary"
+            onClick={() => setShowAutopilot(true)}
+            id="leads-autopilot-btn"
+            style={{ background: "linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)", color: "white" }}
+          >
+            <IconZap size={14} /> Spustit Autopilot ({uncontactedCount})
+          </button>
         </div>
-      )}
+      </div>
       <div className="table-wrap">
         <table className="table">
           <thead>
@@ -111,6 +128,13 @@ export function LeadsTable({ leads }: { leads: Lead[] }) {
           </tbody>
         </table>
       </div>
+
+      <AutopilotModal
+        leads={leads}
+        isOpen={showAutopilot}
+        onClose={() => setShowAutopilot(false)}
+        onFinish={onDone}
+      />
     </section>
   );
 }
