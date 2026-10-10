@@ -12,14 +12,93 @@ import type { Lead } from "@/lib/types";
 import { hostname } from "@/lib/utils";
 import styles from "./search.module.css";
 
-const PRESETS: { group: string; items: string[] }[] = [
-  {
-    group: "Živnostníci",
-    items: ["kadeřnictví", "autoservis", "zubař", "fyzioterapie", "kosmetický salon", "restaurace", "instalatér", "truhlářství", "účetní", "fitness centrum", "pneuservis", "realitní kancelář"],
-  },
-  { group: "E-shopy & obchody", items: ["obchod s oblečením", "květinářství", "vinotéka", "cukrárna", "zahradnictví", "obchod s nábytkem"] },
-  { group: "Firmy B2B", items: ["stavební firma", "strojírenská výroba", "logistická firma", "výroba nábytku", "projekční kancelář", "IT firma"] },
+interface HighValueSegment {
+  id: string;
+  title: string;
+  icon: string;
+  badge: string;
+  badgeBg: string;
+  badgeColor: string;
+  benefit: string;
+  items: string[];
+}
+
+const TOP_COMBOS = [
+  { label: "Rekonstrukce bytů · Brno", query: "rekonstrukce bytů", location: "Brno" },
+  { label: "Truhlářství na míru · Praha", query: "truhlářství na míru", location: "Praha" },
+  { label: "Zubní klinika · Ostrava", query: "zubní klinika", location: "Ostrava" },
+  { label: "Autodetailing · Plzeň", query: "autodetailing", location: "Plzeň" },
+  { label: "Tepelná čerpadla · České Budějovice", query: "tepelná čerpadla", location: "České Budějovice" },
+  { label: "Kovovýroba & CNC · Zlín", query: "kovovýroba", location: "Zlín" },
 ];
+
+const RECOMMENDED_SEGMENTS: HighValueSegment[] = [
+  {
+    id: "construction",
+    title: "Dům, stavba & interiér",
+    icon: "🏠",
+    badge: "Zakázky 100k+ Kč",
+    badgeBg: "rgba(234, 179, 8, 0.15)",
+    badgeColor: "#fbbf24",
+    benefit: "Vysoký rozpočet na realizaci — nový web se zaplatí z jediného získaného klienta.",
+    items: [
+      "rekonstrukce bytů",
+      "stavební firma",
+      "truhlářství na míru",
+      "pergoly a přístřešky",
+      "tepelná čerpadla",
+      "výstavba bazénů",
+      "střechy a klempířství",
+    ],
+  },
+  {
+    id: "services",
+    title: "Prémiové služby & zdraví",
+    icon: "🩺",
+    badge: "Důvěra & estetika",
+    badgeBg: "rgba(59, 130, 246, 0.15)",
+    badgeColor: "#60a5fa",
+    benefit: "Zákazníci vybírají podle dojmu z mobilu a rychlosti. Pomalý web odrazuje.",
+    items: [
+      "zubní klinika",
+      "estetická medicína",
+      "fyzioterapie",
+      "advokátní kancelář",
+      "architektonické studio",
+    ],
+  },
+  {
+    id: "automotive",
+    title: "Auto-moto & detailing",
+    icon: "🚗",
+    badge: "Pomalé weby & těžká grafika",
+    badgeBg: "rgba(249, 115, 22, 0.15)",
+    badgeColor: "#fb923c",
+    benefit: "Vizuální obory s neoptimalizovanými fotkami — ideální terč pro PageSpeed audit.",
+    items: [
+      "autodetailing",
+      "polepy aut",
+      "půjčovna obytných vozů",
+      "autoservis",
+    ],
+  },
+  {
+    id: "b2b",
+    title: "B2B výroba & technika",
+    icon: "⚙️",
+    badge: "Desítky mil. obrat",
+    badgeBg: "rgba(168, 85, 247, 0.15)",
+    badgeColor: "#c084fc",
+    benefit: "Tradiční firmy často s weby z let 2012–2016 hledající reprezentaci pro B2B partnery.",
+    items: [
+      "kovovýroba",
+      "CNC obrábění",
+      "elektroinstalace pro firmy",
+      "průmyslové podlahy",
+    ],
+  },
+];
+
 const CITIES = ["Praha", "Brno", "Ostrava", "Plzeň", "Olomouc", "Liberec", "Hradec Králové", "České Budějovice", "Zlín", "Pardubice"];
 
 export function SearchClient({ placesReady }: { placesReady: boolean }) {
@@ -72,7 +151,7 @@ export function SearchClient({ placesReady }: { placesReady: boolean }) {
         <div className={styles.fields}>
           <div>
             <label className="label" htmlFor="q">Obor / hledaný výraz</label>
-            <input id="q" className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="např. kadeřnictví, autoservis, stavební firma…" required />
+            <input id="q" className="input" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="např. rekonstrukce bytů, zubní klinika…" required />
           </div>
           <div>
             <label className="label" htmlFor="loc">Město / region</label>
@@ -93,18 +172,92 @@ export function SearchClient({ placesReady }: { placesReady: boolean }) {
         </div>
 
         <div className={styles.presets}>
-          {PRESETS.map((p) => (
-            <div key={p.group} className={styles.presetGroup}>
-              <span className="small muted">{p.group}</span>
-              <div className="row" style={{ gap: 6 }}>
-                {p.items.map((i) => (
-                  <button type="button" key={i} className={`${styles.chip} ${query === i ? styles.chipActive : ""}`} onClick={() => setQuery(i)}>
-                    {i}
+          {/* Rychlá volba města */}
+          <div className={styles.citiesSection}>
+            <span className="small muted">Rychlý výběr města:</span>
+            <div className={styles.cityChips}>
+              {CITIES.map((c) => (
+                <button
+                  type="button"
+                  key={c}
+                  className={`${styles.cityChip} ${location.toLowerCase() === c.toLowerCase() ? styles.cityChipActive : ""}`}
+                  onClick={() => setLocation(c)}
+                >
+                  {c}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Rychlé kombo na 1 klik */}
+          <div className={styles.combosSection}>
+            <div className={styles.combosHeader}>
+              <IconZap size={14} style={{ color: "#fbbf24" }} />
+              <span>Doporučený rychlý start (vysoká konverze 1-klikem):</span>
+            </div>
+            <div className={styles.combosList}>
+              {TOP_COMBOS.map((combo) => {
+                const isActive = query === combo.query && location.toLowerCase() === combo.location.toLowerCase();
+                return (
+                  <button
+                    type="button"
+                    key={combo.label}
+                    className={`${styles.comboChip} ${isActive ? styles.comboChipActive : ""}`}
+                    onClick={() => {
+                      setQuery(combo.query);
+                      setLocation(combo.location);
+                    }}
+                  >
+                    ⚡ {combo.label}
                   </button>
-                ))}
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Prémiové segmenty s odznáčky */}
+          <div className={styles.segmentsWrapper}>
+            <div className={styles.segmentsHeader}>
+              <div className={styles.segmentsTitle}>
+                <IconSparkle size={15} style={{ color: "var(--accent)" }} />
+                <span>Doporučená prémiová odvětví pro audit</span>
+              </div>
+              <div className={styles.segmentsSubtitle}>
+                Vybráno podle velikosti zakázek a potenciálu modernizace
               </div>
             </div>
-          ))}
+            <div className={styles.segmentsGrid}>
+              {RECOMMENDED_SEGMENTS.map((seg) => (
+                <div key={seg.id} className={styles.segmentCard}>
+                  <div className={styles.segmentHead}>
+                    <div className={styles.segmentName}>
+                      <span>{seg.icon}</span>
+                      <span>{seg.title}</span>
+                    </div>
+                    <span
+                      className={styles.segmentBadge}
+                      style={{ background: seg.badgeBg, color: seg.badgeColor }}
+                    >
+                      {seg.badge}
+                    </span>
+                  </div>
+                  <p className={styles.segmentBenefit}>{seg.benefit}</p>
+                  <div className={styles.segmentChips}>
+                    {seg.items.map((item) => (
+                      <button
+                        type="button"
+                        key={item}
+                        className={`${styles.chip} ${query === item ? styles.chipActive : ""}`}
+                        onClick={() => setQuery(item)}
+                      >
+                        {item}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </form>
 
