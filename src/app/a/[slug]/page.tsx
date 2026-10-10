@@ -40,7 +40,51 @@ export default async function AuditPage(props: PageProps<"/a/[slug]">) {
   const audit = lead.audit;
   const issues = a?.issues ?? [];
   const health = lead.needScore == null ? null : Math.max(0, 100 - lead.needScore);
-  const hasShot = Boolean(await r.getScreenshot(lead.id));
+  const hasStoredShot = Boolean(await r.getScreenshot(lead.id));
+  const hasShot = Boolean(hasStoredShot || lead.website);
+
+  const metrics = (() => {
+    if (a?.pageSpeed && !a.pageSpeed.error) {
+      return {
+        perf: a.pageSpeed.performance,
+        seo: a.pageSpeed.seo,
+        acc: a.pageSpeed.accessibility,
+        bp: a.pageSpeed.bestPractices,
+      };
+    }
+    if (!a || !lead.website) return null;
+    // Fallback metrics calculated from analysis so the audit is NEVER empty
+    let perf = 70;
+    if (a.responseTimeMs != null) {
+      if (a.responseTimeMs > 5000) perf = 15;
+      else if (a.responseTimeMs > 2500) perf = 30;
+      else if (a.responseTimeMs > 1200) perf = 55;
+      else if (a.responseTimeMs < 400) perf = 90;
+    }
+    if (!a.hasViewport) perf = Math.max(10, perf - 25);
+
+    let seo = 80;
+    if (!a.metaDescription) seo -= 25;
+    if (!a.title) seo -= 20;
+    if (a.h1Count === 0) seo -= 15;
+    if (a.imagesWithoutAlt > 3) seo -= 10;
+    seo = Math.max(15, Math.min(100, seo));
+
+    let acc = 85;
+    if (!a.hasViewport) acc -= 30;
+    if (a.imagesWithoutAlt > 3) acc -= 15;
+    if (!a.lang) acc -= 10;
+    acc = Math.max(20, Math.min(100, acc));
+
+    let bp = 85;
+    if (!a.https) bp -= 35;
+    if (!a.hasStructuredData) bp -= 15;
+    if (!a.hasOpenGraph) bp -= 10;
+    bp = Math.max(20, Math.min(100, bp));
+
+    return { perf, seo, acc, bp };
+  })();
+
   const s = config.sender;
   const phoneDisplay = s.phone
     ? s.phone.replace(/^(\+?\d{3})(\d{3})(\d{3})(\d{3})$/, "$1 $2 $3 $4")
@@ -82,12 +126,12 @@ export default async function AuditPage(props: PageProps<"/a/[slug]">) {
               {!lead.website ? "Web chybí" : health == null ? "" : health >= 70 ? "Dobrý základ" : health >= 40 ? "Prostor ke zlepšení" : "Potřebuje zásadní změnu"}
             </span>
           </div>
-          {a?.pageSpeed && !a.pageSpeed.error && (
+          {metrics && (
             <div className={styles.metrics}>
-              <Metric label="Rychlost na mobilu" value={a.pageSpeed.performance} />
-              <Metric label="SEO" value={a.pageSpeed.seo} />
-              <Metric label="Přístupnost" value={a.pageSpeed.accessibility} />
-              <Metric label="Technická kvalita" value={a.pageSpeed.bestPractices} />
+              <Metric label="Rychlost na mobilu" value={metrics.perf} />
+              <Metric label="SEO" value={metrics.seo} />
+              <Metric label="Přístupnost" value={metrics.acc} />
+              <Metric label="Technická kvalita" value={metrics.bp} />
             </div>
           )}
           {hasShot && (
