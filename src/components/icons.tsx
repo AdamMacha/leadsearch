@@ -68,3 +68,8 @@ export const IconRefresh = (p: P) =>
   base(p, <><path d="M23 4v6h-6M1 20v-6h6" /><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15" /></>);
 export const IconSend = (p: P) =>
   base(p, <><line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" /></>);
+export const IconBriefcase = (p: P) =>
+  base(p, <><rect x="2" y="7" width="20" height="14" rx="2" ry="2" /><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" /></>);
+export const IconFilter = (p: P) =>
+  base(p, <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />);
+

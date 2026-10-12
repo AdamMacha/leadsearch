@@ -4,12 +4,13 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/actions";
-import { IconDashboard, IconLogout, IconRadar, IconSearch, IconSettings, IconSparkle, IconStar, IconUsers, IconZap } from "./icons";
+import { IconBriefcase, IconDashboard, IconLogout, IconRadar, IconSearch, IconSettings, IconSparkle, IconStar, IconUsers, IconZap } from "./icons";
 import styles from "./sidebar.module.css";
 
 const NAV = [
   { href: "/", label: "Přehled", icon: IconDashboard },
   { href: "/campaign", label: "Autopilot Kampaň", icon: IconZap, tag: "Auto" },
+  { href: "/demands", label: "Hlídač poptávek", icon: IconBriefcase, tag: "Live" },
   { href: "/search", label: "Hledat firmy", icon: IconSearch },
   { href: "/leads", label: "Leady", icon: IconUsers },
   { href: "/leads?favorite=1", label: "Oblíbené", icon: IconStar },
@@ -52,6 +53,8 @@ function NavLinks({ hot, favorites }: { hot: number; favorites: number }) {
                   ? { color: "#f59e0b" }
                   : href === "/campaign"
                   ? { color: active ? "white" : "#818cf8" }
+                  : href === "/demands"
+                  ? { color: active ? "white" : "#38bdf8" }
                   : undefined
               }
             />

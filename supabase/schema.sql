@@ -99,3 +99,39 @@ create index if not exists campaign_runs_started_idx on campaign_runs (started_a
 
 alter table campaign_settings enable row level security;
 alter table campaign_runs enable row level security;
+
+-- Úroveň 3: Hlídač poptávek (Demand Tracker)
+create table if not exists demands (
+  id text primary key,
+  source text not null, -- 'webtrh', 'startupjobs', 'poptavej', 'manual'
+  external_id text,
+  title text not null,
+  description text not null,
+  url text,
+  category text,
+  budget text,
+  published_at timestamptz not null default now(),
+  match_score int not null default 0,
+  fit_level text not null default 'low', -- 'high', 'medium', 'low'
+  match_reason text,
+  key_requirements jsonb not null default '[]'::jsonb,
+  suggested_pitch text,
+  status text not null default 'new', -- 'new', 'saved', 'contacted', 'dismissed'
+  notified_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists demands_created_idx on demands (created_at desc);
+create index if not exists demands_match_score_idx on demands (match_score desc);
+create index if not exists demands_source_external_idx on demands (source, external_id);
+
+create table if not exists demand_tracker_settings (
+  id text primary key default 'default',
+  config jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table demands enable row level security;
+alter table demand_tracker_settings enable row level security;
+

@@ -35,7 +35,7 @@ async function executeGeminiRequest<T>(prompt: string, model: string): Promise<T
   return JSON.parse(text.replace(/^```json\s*|```$/g, "")) as T;
 }
 
-async function callGeminiApi<T>(prompt: string, model: string): Promise<T> {
+export async function callGeminiApi<T>(prompt: string, model: string = DEFAULT_AI_MODEL): Promise<T> {
   try {
     return await executeGeminiRequest<T>(prompt, model);
   } catch (err) {
