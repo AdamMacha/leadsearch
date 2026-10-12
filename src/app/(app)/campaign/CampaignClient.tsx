@@ -13,7 +13,7 @@ import {
   IconTrash,
   IconZap,
 } from "@/components/icons";
-import type { CampaignConfig, CampaignRunLog } from "@/lib/campaign";
+import type { CampaignConfig, CampaignRunItem, CampaignRunLog } from "@/lib/campaign";
 import styles from "./campaign.module.css";
 
 interface Props {
@@ -46,7 +46,13 @@ export function CampaignClient({
 
   // Trigger running state
   const [triggering, setTriggering] = useState(false);
-  const [triggerResult, setTriggerResult] = useState<any>(null);
+  const [triggerResult, setTriggerResult] = useState<{
+    ok: boolean;
+    status?: string;
+    reason?: string;
+    error?: string;
+    run?: CampaignRunLog;
+  } | null>(null);
 
   // Add niche / location input state
   const [newNiche, setNewNiche] = useState("");
@@ -87,7 +93,8 @@ export function CampaignClient({
     setTriggering(true);
     setTriggerResult(null);
     try {
-      const res = await fetch("/api/cron/campaign?force=1", { method: "POST" });
+      const batchLimit = Math.min(5, cfg.dailyLimit);
+      const res = await fetch(`/api/cron/campaign?force=1&limit=${batchLimit}`, { method: "POST" });
       const data = await res.json();
       setTriggerResult(data);
 
@@ -241,7 +248,7 @@ export function CampaignClient({
             Ruční testovací spuštění dávky
           </div>
           <div className={styles.triggerDesc}>
-            Chcete ihned otestovat průchod kampaně? Kliknutím spustíte 1 dávku (až pro {cfg.dailyLimit} firem) ihned
+            Chcete ihned otestovat průchod kampaně? Kliknutím spustíte 1 testovací dávku (až pro {Math.min(5, cfg.dailyLimit)} firem) ihned
             bez ohledu na časový plán cronu.
           </div>
         </div>
@@ -259,30 +266,133 @@ export function CampaignClient({
       </section>
 
       {/* Result feedback of manual run */}
-      {triggerResult && (
-        <div
-          className="alert"
-          style={{
-            marginBottom: 20,
-            background: triggerResult.ok ? "rgba(16, 185, 129, 0.1)" : "rgba(239, 68, 68, 0.1)",
-            borderColor: triggerResult.ok ? "rgba(16, 185, 129, 0.3)" : "rgba(239, 68, 68, 0.3)",
-          }}
-        >
-          {triggerResult.ok ? (
-            <div>
-              <strong>✅ Dávka proběhla úspěšně!</strong>
-              <div style={{ marginTop: 4, fontSize: 13 }}>
-                Odesláno: {triggerResult.run?.sentCount ?? 0} &middot; Připraveno: {triggerResult.run?.preparedCount ?? 0} &middot; Přeskočeno: {triggerResult.run?.skippedCount ?? 0}
-                {triggerResult.reason ? ` (${triggerResult.reason})` : ""}
+      {triggerResult && (() => {
+        if (!triggerResult.ok) {
+          return (
+            <div className={`${styles.resultCard} ${styles.resultCardError}`}>
+              <div className={styles.resultHeader}>
+                <div className={styles.resultTitle} style={{ color: "#ef4444" }}>
+                  ❌ Chyba při spuštění dávky
+                </div>
+              </div>
+              <div style={{ fontSize: 13.5, color: "var(--text-2)" }}>
+                {triggerResult.error || "Neznámá chyba při volání kampaně"}
               </div>
             </div>
-          ) : (
-            <div>
-              <strong>❌ Chyba při spuštění dávky:</strong> {triggerResult.error || "Neznámá chyba"}
+          );
+        }
+
+        const run = triggerResult.run;
+        const sent = run?.sentCount ?? 0;
+        const prep = run?.preparedCount ?? 0;
+        const skip = run?.skippedCount ?? 0;
+        const errCount = run?.errorCount ?? 0;
+        const hasSuccess = sent > 0 || prep > 0;
+        const isAllSkipped = !hasSuccess && skip > 0 && errCount === 0;
+        const hasErrors = errCount > 0;
+
+        const cardClass = hasErrors
+          ? styles.resultCardWarning
+          : hasSuccess
+          ? styles.resultCardSuccess
+          : isAllSkipped
+          ? styles.resultCardInfo
+          : styles.resultCardSuccess;
+
+        return (
+          <div className={`${styles.resultCard} ${cardClass}`}>
+            <div className={styles.resultHeader}>
+              <div className={styles.resultTitle}>
+                {hasSuccess && <span style={{ color: "#10b981" }}>✅ Dávka proběhla úspěšně!</span>}
+                {!hasSuccess && hasErrors && <span style={{ color: "#f59e0b" }}>⚠️ Dávka dokončena s chybami</span>}
+                {isAllSkipped && <span style={{ color: "#818cf8" }}>ℹ️ Dávka dokončena – prověřené firmy přeskočeny podle filtrů</span>}
+                {!hasSuccess && !hasErrors && !isAllSkipped && <span>Dávka dokončena</span>}
+              </div>
+
+              <div className={styles.resultPills}>
+                <span className={styles.resultPill} style={{ color: sent > 0 ? "#10b981" : "var(--text-3)" }}>
+                  <IconSend size={13} /> {sent} odesláno
+                </span>
+                <span className={styles.resultPill} style={{ color: prep > 0 ? "#38bdf8" : "var(--text-3)" }}>
+                  <IconSparkle size={13} /> {prep} připraveno
+                </span>
+                <span className={styles.resultPill} style={{ color: skip > 0 ? "#fbbf24" : "var(--text-3)" }}>
+                  ⏭️ {skip} přeskočeno
+                </span>
+                {errCount > 0 && (
+                  <span className={styles.resultPill} style={{ color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.4)" }}>
+                    ❌ {errCount} chyb
+                  </span>
+                )}
+              </div>
             </div>
-          )}
-        </div>
-      )}
+
+            {/* Itemized list of processed companies */}
+            {run?.items && run.items.length > 0 && (
+              <div className={styles.resultItemsList}>
+                {run.items.map((item: CampaignRunItem, idx: number) => {
+                  const badgeClass =
+                    item.status === "sent"
+                      ? styles.badgeSuccess
+                      : item.status === "prepared"
+                      ? styles.badgeInfo
+                      : item.status === "skipped"
+                      ? styles.badgeWarning
+                      : styles.badgeError;
+
+                  const badgeText =
+                    item.status === "sent"
+                      ? "Odesláno"
+                      : item.status === "prepared"
+                      ? "Připraveno"
+                      : item.status === "skipped"
+                      ? "Přeskočeno"
+                      : "Chyba";
+
+                  return (
+                    <div key={idx} className={styles.resultItemRow}>
+                      <div className={styles.resultItemLead}>
+                        <span className={styles.resultItemLeadName}>{item.leadName}</span>
+                        <span className={styles.resultItemLeadEmail}>
+                          {item.email || "bez e-mailu na webu"}
+                        </span>
+                      </div>
+
+                      <div className={styles.resultItemReason}>
+                        {item.reason || "–"}
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span className={`${styles.badge} ${badgeClass}`}>
+                          {badgeText}
+                        </span>
+                        {item.auditLink && (
+                          <a
+                            href={item.auditLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="btn btn-ghost"
+                            style={{ padding: "3px 8px", fontSize: 11.5 }}
+                          >
+                            Audit <IconExternal size={12} />
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Helpful tip when leads are skipped */}
+            {isAllSkipped && (
+              <div className={styles.resultTip}>
+                💡 <strong>Proč byly firmy přeskočeny?</strong> Autopilot chrání reputaci vaší domény a oslovuje pouze weby se skutečnou potřebou redesignu (potřeba webu musí být alespoň <strong>{cfg.minNeedScore}/100</strong>) a dohledaným e-mailem. Pokud chcete oslovit i weby s menšími nedostatky, můžete níže snížit parametr <em>Minimální potřeba webu</em> (např. na 10 nebo 20).
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Settings Section */}
       <section className={styles.sectionCard}>

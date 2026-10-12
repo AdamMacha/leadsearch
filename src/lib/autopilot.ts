@@ -75,7 +75,7 @@ export async function processLeadAutopilot(
     return {
       ok: true,
       status: "skipped",
-      reason: "Firma nemá dohledaný e-mail",
+      reason: "Firma nemá dohledaný e-mail na webu",
       lead,
     };
   }
@@ -84,7 +84,7 @@ export async function processLeadAutopilot(
     return {
       ok: true,
       status: "skipped",
-      reason: `Web má dobré skóre (potřeba jen ${lead.needScore}/100)`,
+      reason: `Web má dobré skóre (potřeba jen ${lead.needScore}/100, minimum je ${minNeedScore})`,
       lead,
     };
   }

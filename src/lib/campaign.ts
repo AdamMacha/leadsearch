@@ -312,6 +312,33 @@ export interface RunCampaignOptions {
   limitOverride?: number;
 }
 
+export function isLeadEligibleForCampaign(l: Lead, configObj: CampaignConfig): boolean {
+  // Only process leads with 'new' status
+  if (l.status !== "new") return false;
+
+  // If already analyzed:
+  if (l.analyzedAt) {
+    // If skipNoEmail is enabled, must have an email
+    if (configObj.skipNoEmail && !l.email) return false;
+    // Must meet or exceed minimum needScore threshold
+    if ((l.needScore ?? 0) < configObj.minNeedScore) return false;
+    return true;
+  }
+
+  // If not yet analyzed:
+  // If skipNoEmail is on, but lead has neither website nor email, an email can never be scraped
+  if (configObj.skipNoEmail && !l.website && !l.email) return false;
+
+  return true;
+}
+
+export function sortCampaignCandidates(a: Lead, b: Lead): number {
+  // Qualified leads with high needScore prioritized, then fresh unanalyzed
+  const aScore = a.analyzedAt ? (a.needScore ?? 0) : 50;
+  const bScore = b.analyzedAt ? (b.needScore ?? 0) : 50;
+  return bScore - aScore;
+}
+
 export async function runAutonomousCampaign(
   opts: RunCampaignOptions = {}
 ): Promise<{
@@ -380,10 +407,10 @@ export async function runAutonomousCampaign(
   const r = repo();
   let leads = await r.listLeads({});
 
-  // Eligible leads in database: new status, uncontacted
-  let eligible = leads.filter(
-    (l) => l.status === "new" && (!configObj.skipNoEmail || l.email)
-  );
+  // Eligible leads in database: new status, uncontacted and meeting criteria
+  let eligible = leads
+    .filter((l) => isLeadEligibleForCampaign(l, configObj))
+    .sort(sortCampaignCandidates);
 
   let searchedQuery: string | undefined;
   let searchedLocation: string | undefined;
@@ -410,9 +437,9 @@ export async function runAutonomousCampaign(
 
       // Refetch leads
       leads = await r.listLeads({});
-      eligible = leads.filter(
-        (l) => l.status === "new" && (!configObj.skipNoEmail || l.email)
-      );
+      eligible = leads
+        .filter((l) => isLeadEligibleForCampaign(l, configObj))
+        .sort(sortCampaignCandidates);
     } catch (err) {
       console.error("Auto search failed during campaign", err);
     }

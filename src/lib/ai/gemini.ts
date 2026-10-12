@@ -3,7 +3,7 @@ import { auditUrl, config } from "../config";
 import type { AuditContent, Lead, OutreachContent } from "../types";
 import { DEFAULT_AI_MODEL } from "./models";
 
-async function callGeminiApi<T>(prompt: string, model: string): Promise<T> {
+async function executeGeminiRequest<T>(prompt: string, model: string): Promise<T> {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`,
     {
@@ -23,7 +23,7 @@ async function callGeminiApi<T>(prompt: string, model: string): Promise<T> {
     const isRateLimit = res.status === 429 || /quota|exhausted|rate limit/i.test(rawMsg);
     const err = new Error(
       isRateLimit
-        ? `Limit dotazů pro model ${model} byl vyčerpán (429 Rate Limit / Quota). Přepni na jiný model (např. gemini-3.5-flash-lite).`
+        ? `Limit dotazů pro model ${model} byl vyčerpán (429 Rate Limit / Quota). Přepni na jiný model (např. ${DEFAULT_AI_MODEL}).`
         : `Gemini (${model}): ${rawMsg}`
     );
     (err as unknown as { status?: number; isRateLimit?: boolean }).status = res.status;
@@ -33,6 +33,20 @@ async function callGeminiApi<T>(prompt: string, model: string): Promise<T> {
   const text: string | undefined = data?.candidates?.[0]?.content?.parts?.map((p: { text?: string }) => p.text ?? "").join("");
   if (!text) throw new Error(`Gemini (${model}) vrátil prázdnou odpověď`);
   return JSON.parse(text.replace(/^```json\s*|```$/g, "")) as T;
+}
+
+async function callGeminiApi<T>(prompt: string, model: string): Promise<T> {
+  try {
+    return await executeGeminiRequest<T>(prompt, model);
+  } catch (err) {
+    const msg = (err as Error).message;
+    // Auto-fallback to stable DEFAULT_AI_MODEL on 503 overload, 429 quota, or high demand
+    if (model !== DEFAULT_AI_MODEL && (/high demand|overloaded|unavailable|503|rate limit|quota/i.test(msg) || (err as { status?: number }).status === 503)) {
+      console.warn(`[Gemini] Model ${model} nedostupný (${msg}). Automatický fallback na ${DEFAULT_AI_MODEL}...`);
+      return await executeGeminiRequest<T>(prompt, DEFAULT_AI_MODEL);
+    }
+    throw err;
+  }
 }
 
 export async function testAiModel(model: string): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
