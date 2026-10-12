@@ -26,11 +26,15 @@ async function handle(request: Request) {
   const sessionToken = cookieJar.get(SESSION_COOKIE)?.value;
   const isOwner = await verifySessionToken(sessionToken);
 
-  // If no CRON_SECRET is set yet, allow in dev or if owner logged in
+  // 3. Vercel Cron caller check (Vercel automatically sets User-Agent: vercel-cron/1.0)
+  const userAgent = request.headers.get("user-agent") || "";
+  const isVercelCron = userAgent.includes("vercel-cron");
+
+  // If no CRON_SECRET is set yet, allow in dev, if owner logged in, or if called by Vercel Cron
   const isAllowed =
     isCronAuthorized ||
     isOwner ||
-    (!expectedSecret && process.env.NODE_ENV !== "production");
+    (!expectedSecret && (process.env.NODE_ENV !== "production" || isVercelCron));
 
   if (!isAllowed) {
     return NextResponse.json(
