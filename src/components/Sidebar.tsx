@@ -4,11 +4,12 @@ import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { logout } from "@/app/actions";
-import { IconDashboard, IconLogout, IconRadar, IconSearch, IconSettings, IconSparkle, IconStar, IconUsers } from "./icons";
+import { IconDashboard, IconLogout, IconRadar, IconSearch, IconSettings, IconSparkle, IconStar, IconUsers, IconZap } from "./icons";
 import styles from "./sidebar.module.css";
 
 const NAV = [
   { href: "/", label: "Přehled", icon: IconDashboard },
+  { href: "/campaign", label: "Autopilot Kampaň", icon: IconZap, tag: "Auto" },
   { href: "/search", label: "Hledat firmy", icon: IconSearch },
   { href: "/leads", label: "Leady", icon: IconUsers },
   { href: "/leads?favorite=1", label: "Oblíbené", icon: IconStar },
@@ -22,7 +23,7 @@ function NavLinks({ hot, favorites }: { hot: number; favorites: number }) {
 
   return (
     <nav className={styles.nav}>
-      {NAV.map(({ href, label, icon: Icon }) => {
+      {NAV.map(({ href, label, icon: Icon, tag }) => {
         let active = false;
         if (href === "/") {
           active = pathname === "/";
@@ -46,10 +47,32 @@ function NavLinks({ hot, favorites }: { hot: number; favorites: number }) {
           >
             <Icon
               size={17}
-              style={isFavLink && (active || favorites > 0) ? { color: "#f59e0b" } : undefined}
+              style={
+                isFavLink && (active || favorites > 0)
+                  ? { color: "#f59e0b" }
+                  : href === "/campaign"
+                  ? { color: active ? "white" : "#818cf8" }
+                  : undefined
+              }
             />
             <span>{label}</span>
-            {count > 0 && (
+            {tag && (
+              <span
+                style={{
+                  marginLeft: "auto",
+                  padding: "1px 6px",
+                  fontSize: 10,
+                  fontWeight: 700,
+                  borderRadius: 999,
+                  background: active ? "white" : "linear-gradient(135deg, rgba(99, 102, 241, 0.25), rgba(168, 85, 247, 0.25))",
+                  color: active ? "#4338ca" : "#a5b4fc",
+                  border: active ? "none" : "1px solid rgba(165, 180, 252, 0.3)",
+                }}
+              >
+                {tag}
+              </span>
+            )}
+            {count > 0 && !tag && (
               <span
                 className={styles.count}
                 style={

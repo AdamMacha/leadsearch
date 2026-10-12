@@ -69,3 +69,33 @@ create or replace function increment_audit_views(lead uuid)
 returns void language sql as $$
   update leads set audit_views = audit_views + 1, audit_last_viewed_at = now() where id = lead;
 $$;
+
+-- Úroveň 2: Plně autonomní kampaň (Cron)
+create table if not exists campaign_settings (
+  id text primary key default 'default',
+  config jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists campaign_runs (
+  id text primary key,
+  started_at timestamptz not null default now(),
+  finished_at timestamptz not null default now(),
+  trigger text not null default 'cron',
+  mode text not null default 'prepare',
+  searched_query text,
+  searched_location text,
+  new_leads_found int not null default 0,
+  processed_count int not null default 0,
+  sent_count int not null default 0,
+  prepared_count int not null default 0,
+  skipped_count int not null default 0,
+  error_count int not null default 0,
+  items jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists campaign_runs_started_idx on campaign_runs (started_at desc);
+
+alter table campaign_settings enable row level security;
+alter table campaign_runs enable row level security;
