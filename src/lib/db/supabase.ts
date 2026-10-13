@@ -226,7 +226,14 @@ export const supabaseRepo: Repo = {
   },
 
   async listSearches(limit = 20) {
-    const data = check(await db().from("searches").select().order("created_at", { ascending: false }).limit(limit));
+    const data = check(
+      await db()
+        .from("searches")
+        .select()
+        .not("query", "like", "__SYSTEM_%")
+        .order("created_at", { ascending: false })
+        .limit(limit)
+    );
     return (data as Row[]).map(toSearch);
   },
 

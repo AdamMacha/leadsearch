@@ -123,6 +123,26 @@ export async function getCampaignConfig(): Promise<CampaignConfig> {
       if (!error && data?.config) {
         return { ...DEFAULT_CAMPAIGN_CONFIG, ...data.config };
       }
+
+      // Fallback: If dedicated table is missing (PGRST205), read from existing 'searches' table
+      if (error && error.code === "PGRST205") {
+        const { data: sysRow } = await client
+          .from("searches")
+          .select("location")
+          .eq("query", "__SYSTEM_CAMPAIGN_CONFIG__")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (sysRow?.location) {
+          try {
+            const parsed = JSON.parse(sysRow.location);
+            return { ...DEFAULT_CAMPAIGN_CONFIG, ...parsed };
+          } catch {
+            /* ignore parse error */
+          }
+        }
+      }
     } catch {
       /* fallback to local */
     }
@@ -156,11 +176,33 @@ export async function saveCampaignConfig(
     try {
       const { createClient } = await import("@supabase/supabase-js");
       const client = createClient(config.supabaseUrl, config.supabaseServiceKey);
-      await client.from("campaign_settings").upsert({
+      const { error } = await client.from("campaign_settings").upsert({
         id: "default",
         config: updated,
         updated_at: updated.updatedAt,
       });
+
+      // Fallback: If dedicated table is missing (PGRST205), persist in existing 'searches' table
+      if (error && error.code === "PGRST205") {
+        await client.from("searches").insert({
+          query: "__SYSTEM_CAMPAIGN_CONFIG__",
+          location: JSON.stringify(updated),
+          results_count: 0,
+          new_count: 0,
+        });
+
+        // Prune old config rows, keep latest 3
+        const { data: oldConfigs } = await client
+          .from("searches")
+          .select("id")
+          .eq("query", "__SYSTEM_CAMPAIGN_CONFIG__")
+          .order("created_at", { ascending: false });
+
+        if (oldConfigs && oldConfigs.length > 3) {
+          const toDelete = oldConfigs.slice(3).map((r) => r.id);
+          await client.from("searches").delete().in("id", toDelete);
+        }
+      }
     } catch {
       /* ignore */
     }
@@ -207,6 +249,30 @@ export async function getCampaignRuns(limit = 15): Promise<CampaignRunLog[]> {
           items: Array.isArray(d.items) ? d.items : [],
         }));
       }
+
+      // Fallback: If dedicated table is missing (PGRST205), read from 'searches' table
+      if (error && error.code === "PGRST205") {
+        const { data: sysRuns } = await client
+          .from("searches")
+          .select("id, location, created_at")
+          .eq("query", "__SYSTEM_CAMPAIGN_RUN__")
+          .order("created_at", { ascending: false })
+          .limit(limit);
+
+        if (sysRuns && sysRuns.length > 0) {
+          const parsedRuns: CampaignRunLog[] = [];
+          for (const row of sysRuns) {
+            try {
+              if (row.location) {
+                parsedRuns.push(JSON.parse(row.location));
+              }
+            } catch {
+              /* ignore parse error */
+            }
+          }
+          if (parsedRuns.length > 0) return parsedRuns;
+        }
+      }
     } catch {
       /* fallback */
     }
@@ -235,7 +301,7 @@ export async function recordCampaignRun(run: CampaignRunLog): Promise<void> {
     try {
       const { createClient } = await import("@supabase/supabase-js");
       const client = createClient(config.supabaseUrl, config.supabaseServiceKey);
-      await client.from("campaign_runs").insert({
+      const { error } = await client.from("campaign_runs").insert({
         id: run.id,
         started_at: run.startedAt,
         finished_at: run.finishedAt,
@@ -251,6 +317,28 @@ export async function recordCampaignRun(run: CampaignRunLog): Promise<void> {
         error_count: run.errorCount,
         items: run.items,
       });
+
+      // Fallback: If dedicated table is missing (PGRST205), store in 'searches' table
+      if (error && error.code === "PGRST205") {
+        await client.from("searches").insert({
+          query: "__SYSTEM_CAMPAIGN_RUN__",
+          location: JSON.stringify(run),
+          results_count: run.sentCount,
+          new_count: run.newLeadsFound,
+        });
+
+        // Prune old runs, keep latest 50
+        const { data: oldRuns } = await client
+          .from("searches")
+          .select("id")
+          .eq("query", "__SYSTEM_CAMPAIGN_RUN__")
+          .order("created_at", { ascending: false });
+
+        if (oldRuns && oldRuns.length > 50) {
+          const toDelete = oldRuns.slice(50).map((r) => r.id);
+          await client.from("searches").delete().in("id", toDelete);
+        }
+      }
     } catch {
       /* ignore */
     }
@@ -415,33 +503,57 @@ export async function runAutonomousCampaign(
   let searchedQuery: string | undefined;
   let searchedLocation: string | undefined;
   let newLeadsFound = 0;
+  const searchedQueries: { niche: string; city: string; inserted: number }[] = [];
+  let currentNicheIdx = configObj.currentNicheIndex;
+  let currentLocIdx = configObj.currentLocationIndex;
 
-  // 4. Auto-Search if not enough leads in database
+  // 4. Auto-Search if not enough leads in database (with smart rotation)
   if (eligible.length < remainingQuota && configObj.niches.length > 0 && configObj.locations.length > 0) {
-    const niche = configObj.niches[configObj.currentNicheIndex % configObj.niches.length];
-    const city = configObj.locations[configObj.currentLocationIndex % configObj.locations.length];
-    searchedQuery = niche;
-    searchedLocation = city;
+    let attempts = 0;
+    const maxAttempts = 3;
 
-    try {
-      const searchRes = await runSearch(niche, city, 1);
-      newLeadsFound = searchRes.inserted;
+    while (eligible.length < remainingQuota && attempts < maxAttempts) {
+      attempts++;
+      const niche = configObj.niches[currentNicheIdx % configObj.niches.length];
+      const city = configObj.locations[currentLocIdx % configObj.locations.length];
 
-      // Advance rotation indices
-      const nextNicheIndex = (configObj.currentNicheIndex + 1) % configObj.niches.length;
-      const nextLocIndex = (configObj.currentLocationIndex + 1) % configObj.locations.length;
-      await saveCampaignConfig({
-        currentNicheIndex: nextNicheIndex,
-        currentLocationIndex: nextLocIndex,
-      });
+      try {
+        const searchRes = await runSearch(niche, city, 1);
+        newLeadsFound += searchRes.inserted;
+        searchedQueries.push({ niche, city, inserted: searchRes.inserted });
 
-      // Refetch leads
-      leads = await r.listLeads({});
-      eligible = leads
-        .filter((l) => isLeadEligibleForCampaign(l, configObj))
-        .sort(sortCampaignCandidates);
-    } catch (err) {
-      console.error("Auto search failed during campaign", err);
+        // Advance indices
+        currentNicheIdx = (currentNicheIdx + 1) % configObj.niches.length;
+        currentLocIdx = (currentLocIdx + 1) % configObj.locations.length;
+
+        // Refetch leads
+        leads = await r.listLeads({});
+        eligible = leads
+          .filter((l) => isLeadEligibleForCampaign(l, configObj))
+          .sort(sortCampaignCandidates);
+
+        // If this search found new leads or we have enough eligible candidates, stop searching
+        if (searchRes.inserted > 0 || eligible.length >= remainingQuota) {
+          break;
+        }
+      } catch (err) {
+        console.error(`Auto search failed for ${niche} ${city}:`, err);
+        currentNicheIdx = (currentNicheIdx + 1) % configObj.niches.length;
+        currentLocIdx = (currentLocIdx + 1) % configObj.locations.length;
+      }
+    }
+
+    // Persist updated rotation indices
+    configObj.currentNicheIndex = currentNicheIdx;
+    configObj.currentLocationIndex = currentLocIdx;
+    await saveCampaignConfig({
+      currentNicheIndex: currentNicheIdx,
+      currentLocationIndex: currentLocIdx,
+    });
+
+    if (searchedQueries.length > 0) {
+      searchedQuery = searchedQueries.map((s) => s.niche).join(", ");
+      searchedLocation = searchedQueries.map((s) => s.city).join(", ");
     }
   }
 
@@ -518,18 +630,45 @@ export async function runAutonomousCampaign(
       .slice(0, 8)
       .join("\n");
 
+    const skippedList = runItems
+      .filter((it) => it.status === "skipped")
+      .map((it) => {
+        const reason = it.reason ? `: <i>${it.reason}</i>` : "";
+        return `• <b>${it.leadName}</b>${reason}`;
+      })
+      .slice(0, 5)
+      .join("\n");
+
     const nextNiche = configObj.niches[configObj.currentNicheIndex % configObj.niches.length];
     const nextLoc = configObj.locations[configObj.currentLocationIndex % configObj.locations.length];
 
     const modeName = configObj.mode === "full" ? "Plný automat (e-maily odeslány)" : "Poloautomat (náhledy připraveny)";
+
+    let searchSummary = "";
+    if (searchedQueries.length === 1) {
+      searchSummary = `🔍 Automaticky prohledáno: <i>${searchedQueries[0].niche} · ${searchedQueries[0].city}</i> (+${newLeadsFound} nových)\n`;
+    } else if (searchedQueries.length > 1) {
+      const parts = searchedQueries.map((s) => `${s.niche} (+${s.inserted})`).join(", ");
+      searchSummary = `🔍 Automaticky prohledáno: <i>${parts}</i> (celkem +${newLeadsFound} nových)\n`;
+    } else if (searchedQuery) {
+      searchSummary = `🔍 Automaticky prohledáno: <i>${searchedQuery} · ${searchedLocation}</i> (+${newLeadsFound} nových)\n`;
+    }
+
+    let batchSummary = "";
+    if (sentList) {
+      batchSummary = `\n<b>Zpracované firmy:</b>\n${sentList}\n`;
+    }
+    if (skippedList) {
+      batchSummary += `\n⚠️ <b>Důvody přeskočení (${skippedCount}):</b>\n${skippedList}\n`;
+    }
 
     await notifyTelegram(
       `🤖 <b>[LeadRadar] Běh autonomní kampaně dokončen</b>\n` +
       `📌 Režim: <b>${modeName}</b>\n` +
       `✉️ Dnes odesláno celkem: <b>${sentToday + sentCount} / ${configObj.dailyLimit}</b>\n` +
       `🏢 V této dávce: <b>${sentCount} odesláno</b>, <b>${preparedCount} připraveno</b>, <b>${skippedCount} přeskočeno</b>\n` +
-      (searchedQuery ? `🔍 Automaticky prohledáno: <i>${searchedQuery} · ${searchedLocation}</i> (+${newLeadsFound} nových)\n` : "") +
-      (sentList ? `\n<b>Zpracované firmy:</b>\n${sentList}\n` : "") +
+      searchSummary +
+      batchSummary +
       `\n⏭️ Další v rotaci: <i>${nextNiche} · ${nextLoc}</i>`
     );
   }

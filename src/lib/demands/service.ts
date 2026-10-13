@@ -47,6 +47,26 @@ export async function getDemandTrackerConfig(): Promise<DemandTrackerConfig> {
       if (!error && data?.config) {
         return { ...DEFAULT_DEMAND_TRACKER_CONFIG, ...data.config };
       }
+
+      // Fallback: If dedicated table is missing (PGRST205), check 'searches' table
+      if (error && error.code === "PGRST205") {
+        const { data: sysRow } = await client
+          .from("searches")
+          .select("location")
+          .eq("query", "__SYSTEM_DEMAND_TRACKER_CONFIG__")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (sysRow?.location) {
+          try {
+            const parsed = JSON.parse(sysRow.location);
+            return { ...DEFAULT_DEMAND_TRACKER_CONFIG, ...parsed };
+          } catch {
+            /* ignore parse err */
+          }
+        }
+      }
     } catch {
       /* fallback to local */
     }
@@ -79,11 +99,33 @@ export async function saveDemandTrackerConfig(
     try {
       const { createClient } = await import("@supabase/supabase-js");
       const client = createClient(appConfig.supabaseUrl, appConfig.supabaseServiceKey);
-      await client.from("demand_tracker_settings").upsert({
+      const { error } = await client.from("demand_tracker_settings").upsert({
         id: "default",
         config: updated,
         updated_at: new Date().toISOString(),
       });
+
+      // Fallback: If dedicated table is missing (PGRST205), persist in 'searches' table
+      if (error && error.code === "PGRST205") {
+        await client.from("searches").insert({
+          query: "__SYSTEM_DEMAND_TRACKER_CONFIG__",
+          location: JSON.stringify(updated),
+          results_count: 0,
+          new_count: 0,
+        });
+
+        // Prune old config rows
+        const { data: oldRows } = await client
+          .from("searches")
+          .select("id")
+          .eq("query", "__SYSTEM_DEMAND_TRACKER_CONFIG__")
+          .order("created_at", { ascending: false });
+
+        if (oldRows && oldRows.length > 3) {
+          const toDelete = oldRows.slice(3).map((r) => r.id);
+          await client.from("searches").delete().in("id", toDelete);
+        }
+      }
     } catch {
       /* ignore */
     }
@@ -151,6 +193,35 @@ export async function listDemands(filter?: {
         }));
         return all;
       }
+
+      // Fallback: If dedicated table is missing (PGRST205), read from 'searches' table
+      if (error && error.code === "PGRST205") {
+        const { data: sysRow } = await client
+          .from("searches")
+          .select("location")
+          .eq("query", "__SYSTEM_DEMANDS__")
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (sysRow?.location) {
+          try {
+            const parsed = JSON.parse(sysRow.location);
+            if (Array.isArray(parsed)) {
+              memoryDemands = parsed;
+              let filtered = [...parsed];
+              if (filter?.status) filtered = filtered.filter((d) => d.status === filter.status);
+              if (filter?.source) filtered = filtered.filter((d) => d.source === filter.source);
+              if (typeof filter?.minScore === "number") filtered = filtered.filter((d) => d.matchScore >= filter.minScore!);
+              filtered.sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+              if (filter?.limit) filtered = filtered.slice(0, filter.limit);
+              return filtered;
+            }
+          } catch {
+            /* ignore parse err */
+          }
+        }
+      }
     } catch {
       /* fallback to local */
     }
@@ -186,7 +257,7 @@ export async function saveDemand(demand: Demand): Promise<Demand> {
     try {
       const { createClient } = await import("@supabase/supabase-js");
       const client = createClient(appConfig.supabaseUrl, appConfig.supabaseServiceKey);
-      await client.from("demands").upsert({
+      const { error } = await client.from("demands").upsert({
         id: demand.id,
         source: demand.source,
         external_id: demand.externalId,
@@ -206,6 +277,27 @@ export async function saveDemand(demand: Demand): Promise<Demand> {
         created_at: demand.createdAt,
         updated_at: demand.updatedAt,
       });
+
+      // Fallback: If dedicated table is missing (PGRST205), store serialized list in 'searches' table
+      if (error && error.code === "PGRST205") {
+        await client.from("searches").insert({
+          query: "__SYSTEM_DEMANDS__",
+          location: JSON.stringify(memoryDemands.slice(0, 50)),
+          results_count: memoryDemands.length,
+          new_count: 0,
+        });
+
+        const { data: oldRows } = await client
+          .from("searches")
+          .select("id")
+          .eq("query", "__SYSTEM_DEMANDS__")
+          .order("created_at", { ascending: false });
+
+        if (oldRows && oldRows.length > 3) {
+          const toDelete = oldRows.slice(3).map((r) => r.id);
+          await client.from("searches").delete().in("id", toDelete);
+        }
+      }
     } catch {
       /* ignore */
     }

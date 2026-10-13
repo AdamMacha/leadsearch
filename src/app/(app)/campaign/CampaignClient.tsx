@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import Link from "next/link";
 import {
   IconCheck,
@@ -15,6 +15,70 @@ import {
 } from "@/components/icons";
 import type { CampaignConfig, CampaignRunItem, CampaignRunLog } from "@/lib/campaign";
 import styles from "./campaign.module.css";
+
+const SQL_MIGRATION = `-- LeadRadar: Schéma pro Úroveň 2 (Kampaň) a Úroveň 3 (Hlídač poptávek)
+create table if not exists campaign_settings (
+  id text primary key default 'default',
+  config jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists campaign_runs (
+  id text primary key,
+  started_at timestamptz not null default now(),
+  finished_at timestamptz not null default now(),
+  trigger text not null default 'cron',
+  mode text not null default 'prepare',
+  searched_query text,
+  searched_location text,
+  new_leads_found int not null default 0,
+  processed_count int not null default 0,
+  sent_count int not null default 0,
+  prepared_count int not null default 0,
+  skipped_count int not null default 0,
+  error_count int not null default 0,
+  items jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists campaign_runs_started_idx on campaign_runs (started_at desc);
+
+create table if not exists demands (
+  id text primary key,
+  source text not null,
+  external_id text,
+  title text not null,
+  description text not null,
+  url text,
+  category text,
+  budget text,
+  published_at timestamptz not null default now(),
+  match_score int not null default 0,
+  fit_level text not null default 'low',
+  match_reason text,
+  key_requirements jsonb not null default '[]'::jsonb,
+  suggested_pitch text,
+  status text not null default 'new',
+  notified_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists demands_created_idx on demands (created_at desc);
+create index if not exists demands_match_score_idx on demands (match_score desc);
+create index if not exists demands_source_external_idx on demands (source, external_id);
+
+create table if not exists demand_tracker_settings (
+  id text primary key default 'default',
+  config jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table campaign_settings enable row level security;
+alter table campaign_runs enable row level security;
+alter table demands enable row level security;
+alter table demand_tracker_settings enable row level security;
+`;
 
 interface Props {
   initialConfig: CampaignConfig;
@@ -58,11 +122,18 @@ export function CampaignClient({
   const [newNiche, setNewNiche] = useState("");
   const [newLocation, setNewLocation] = useState("");
   const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
 
   // Expanded run log details
   const [expandedRunId, setExpandedRunId] = useState<string | null>(null);
 
   const webhookUrl = `${baseUrl.replace(/\/$/, "")}/api/cron/campaign${cronSecret ? `?key=${cronSecret}` : ""}`;
+
+  function copySql() {
+    navigator.clipboard.writeText(SQL_MIGRATION);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2500);
+  }
 
   async function updateConfig(patch: Partial<CampaignConfig>) {
     const updated = { ...cfg, ...patch };
@@ -644,6 +715,28 @@ export function CampaignClient({
               Tuto URL adresu můžete zdarma vložit na službu <a href="https://cron-job.org" target="_blank" rel="noreferrer" className="link">cron-job.org</a> a nastavit spouštění např. každý den v 9:00.
             </p>
           </div>
+
+          <div style={{ borderTop: "1px solid var(--border)", paddingTop: 14, marginTop: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: "var(--text)", marginBottom: 4 }}>
+                  3. Databázová synchronizace (Supabase)
+                </div>
+                <p className="small muted" style={{ lineHeight: 1.5, margin: 0 }}>
+                  Data o bězích a rotaci se automaticky ukládají do cloudu Supabase. Pokud chcete v Supabase vytvořit nativní tabulky pro čistější SQL schéma, zkopírujte migrační skript a spusťte jej v <i>Supabase → SQL Editor</i>.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-sm"
+                onClick={copySql}
+                style={{ background: "rgba(16, 185, 129, 0.15)", color: "#34d399", border: "1px solid rgba(16, 185, 129, 0.3)" }}
+              >
+                {copiedSql ? <IconCheck size={14} /> : <IconCopy size={14} />}
+                {copiedSql ? "SQL zkopírováno!" : "Kopírovat SQL skript"}
+              </button>
+            </div>
+          </div>
         </div>
       </section>
 
@@ -697,7 +790,7 @@ export function CampaignClient({
                   });
 
                   return (
-                    <tbody key={r.id}>
+                    <Fragment key={r.id}>
                       <tr>
                         <td>
                           <strong>{dateFormatted}</strong>
@@ -793,7 +886,7 @@ export function CampaignClient({
                           </td>
                         </tr>
                       )}
-                    </tbody>
+                    </Fragment>
                   );
                 })}
               </tbody>
