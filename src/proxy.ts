@@ -11,18 +11,22 @@ export async function proxy(request: NextRequest) {
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   const configuredAuditHost = process.env.AUDIT_HOST?.trim().toLowerCase();
 
+  // Dedicated audit host (e.g. audit.technologio.eu only - never web.technologio.eu or app domains)
   const isDedicatedAuditHost =
-    Boolean(configuredAuditHost && host === configuredAuditHost) ||
-    host === "audit.technologio.eu";
+    host === "audit.technologio.eu" ||
+    (Boolean(configuredAuditHost && host === configuredAuditHost) &&
+      host !== "web.technologio.eu" &&
+      !host.includes("localhost") &&
+      !host.includes("vercel.app"));
 
-  // Dedicated audit host (e.g. audit.technologio.eu)
   if (isDedicatedAuditHost) {
     if (pathname === "/") {
       return NextResponse.redirect(process.env.SENDER_WEB || "https://www.technologio.eu");
     }
     if (pathname.startsWith("/a/")) return NextResponse.next();
+    if (pathname.startsWith("/api/cron/")) return NextResponse.next();
     const slug = pathname.slice(1).split("/")[0];
-    if (/^[a-z0-9-]+$/.test(slug)) {
+    if (/^[a-z0-9-]+$/.test(slug) && slug !== "api") {
       return NextResponse.rewrite(new URL(`/a/${slug}`, request.url));
     }
     return new NextResponse("Not found", { status: 404 });
