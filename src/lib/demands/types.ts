@@ -1,4 +1,10 @@
-export type DemandSource = "webtrh" | "startupjobs" | "poptavej" | "manual";
+export type DemandSource =
+  | "webtrh"
+  | "startupjobs"
+  | "poptavej"
+  | "freelancer"
+  | "weworkremotely"
+  | "manual";
 
 export type DemandFitLevel = "high" | "medium" | "low";
 
@@ -43,6 +49,8 @@ export interface DemandTrackerConfig {
     webtrh: boolean;
     startupjobs: boolean;
     poptavej: boolean;
+    freelancer: boolean;
+    weworkremotely: boolean;
   };
   skillsSummary: string;
   senderProfile: {
@@ -63,6 +71,8 @@ export const DEFAULT_DEMAND_TRACKER_CONFIG: DemandTrackerConfig = {
     webtrh: true,
     startupjobs: true,
     poptavej: true,
+    freelancer: true,
+    weworkremotely: true,
   },
   skillsSummary:
     "Tvorba a redesign moderních webových stránek (Next.js, vysoká rychlost a konverze, moderní UI/UX), Webové aplikace a systémy na míru, E-shopy (Shoptet, WooCommerce, zakázkové řešení), SEO optimalizace, grafika a správa webů.",

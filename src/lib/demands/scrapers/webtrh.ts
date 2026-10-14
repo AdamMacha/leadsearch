@@ -1,7 +1,9 @@
 import "server-only";
 
+import type { DemandSource } from "../types";
+
 export interface RawScrapedDemand {
-  source: "webtrh" | "startupjobs" | "poptavej" | "manual";
+  source: DemandSource;
   externalId: string;
   title: string;
   description: string;

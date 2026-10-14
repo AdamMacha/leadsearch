@@ -2,6 +2,8 @@ import "server-only";
 import type { DemandTrackerConfig } from "../types";
 import { type RawScrapedDemand, scrapeWebtrhDemands } from "./webtrh";
 import { scrapeStartupJobsDemands } from "./startupjobs";
+import { scrapeFreelancerDemands } from "./freelancer";
+import { scrapeWeWorkRemotelyDemands } from "./weworkremotely";
 
 export async function fetchActiveDemands(
   config: DemandTrackerConfig
@@ -14,6 +16,14 @@ export async function fetchActiveDemands(
 
   if (config.sources.startupjobs) {
     tasks.push(scrapeStartupJobsDemands());
+  }
+
+  if (config.sources.freelancer) {
+    tasks.push(scrapeFreelancerDemands());
+  }
+
+  if (config.sources.weworkremotely) {
+    tasks.push(scrapeWeWorkRemotelyDemands());
   }
 
   const results = await Promise.allSettled(tasks);

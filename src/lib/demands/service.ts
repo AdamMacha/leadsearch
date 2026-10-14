@@ -32,6 +32,22 @@ async function ensureDataDir() {
 // 1. Settings management
 // ----------------------------------------------------
 
+function mergeConfig(incoming?: any): DemandTrackerConfig {
+  if (!incoming || typeof incoming !== "object") return { ...DEFAULT_DEMAND_TRACKER_CONFIG };
+  return {
+    ...DEFAULT_DEMAND_TRACKER_CONFIG,
+    ...incoming,
+    sources: {
+      ...DEFAULT_DEMAND_TRACKER_CONFIG.sources,
+      ...(incoming.sources || {}),
+    },
+    senderProfile: {
+      ...DEFAULT_DEMAND_TRACKER_CONFIG.senderProfile,
+      ...(incoming.senderProfile || {}),
+    },
+  };
+}
+
 export async function getDemandTrackerConfig(): Promise<DemandTrackerConfig> {
   // 1. Try Supabase
   if (appConfig.supabaseUrl && appConfig.supabaseServiceKey) {
@@ -45,7 +61,7 @@ export async function getDemandTrackerConfig(): Promise<DemandTrackerConfig> {
         .maybeSingle();
 
       if (!error && data?.config) {
-        return { ...DEFAULT_DEMAND_TRACKER_CONFIG, ...data.config };
+        return mergeConfig(data.config);
       }
 
       // Fallback: If dedicated table is missing (PGRST205), check 'searches' table
@@ -61,7 +77,7 @@ export async function getDemandTrackerConfig(): Promise<DemandTrackerConfig> {
         if (sysRow?.location) {
           try {
             const parsed = JSON.parse(sysRow.location);
-            return { ...DEFAULT_DEMAND_TRACKER_CONFIG, ...parsed };
+            return mergeConfig(parsed);
           } catch {
             /* ignore parse err */
           }
@@ -76,10 +92,10 @@ export async function getDemandTrackerConfig(): Promise<DemandTrackerConfig> {
   try {
     const raw = await fs.readFile(CONFIG_FILE, "utf-8");
     const parsed = JSON.parse(raw);
-    memoryConfig = { ...DEFAULT_DEMAND_TRACKER_CONFIG, ...parsed };
+    memoryConfig = mergeConfig(parsed);
     return memoryConfig;
   } catch {
-    return memoryConfig;
+    return mergeConfig(memoryConfig);
   }
 }
 
@@ -90,6 +106,14 @@ export async function saveDemandTrackerConfig(
   const updated: DemandTrackerConfig = {
     ...current,
     ...patch,
+    sources: {
+      ...current.sources,
+      ...(patch.sources || {}),
+    },
+    senderProfile: {
+      ...current.senderProfile,
+      ...(patch.senderProfile || {}),
+    },
   };
 
   memoryConfig = updated;
@@ -403,6 +427,14 @@ export async function scanAndProcessDemands(): Promise<{
                 ? "Webtrh.cz"
                 : demand.source === "startupjobs"
                 ? "StartupJobs.cz"
+                : demand.source === "freelancer"
+                ? "Freelancer.com"
+                : demand.source === "weworkremotely"
+                ? "WeWorkRemotely"
+                : demand.source === "poptavej"
+                ? "Poptávej.cz"
+                : demand.source === "manual"
+                ? "Vlastní zadání"
                 : demand.source;
 
             const pitchPreview = demand.suggestedPitch.slice(0, 300);

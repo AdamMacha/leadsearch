@@ -175,7 +175,7 @@ export function DemandsClient({ initialDemands, initialConfig }: Props) {
           </h1>
         </div>
         <div className={styles.subtitle}>
-          Autonomní bot nepřetržitě sleduje české poptávkové portály (Webtrh.cz, StartupJobs). Každou novou poptávku
+          Autonomní bot nepřetržitě sleduje poptávkové portály (Webtrh.cz, Freelancer.com, WeWorkRemotely). Každou novou poptávku
           AI okamžitě ohodnotí podle vašich dovedností, připraví personalizovaný návrh odpovědi a pošle vám echo na Telegram.
         </div>
       </header>
@@ -283,7 +283,7 @@ export function DemandsClient({ initialDemands, initialConfig }: Props) {
         <div className={styles.triggerInfo}>
           <div className={styles.triggerTitle}>
             <IconZap size={18} style={{ color: "#fbbf24" }} />
-            Automatický skener portálů (Webtrh.cz, StartupJobs.cz)
+            Automatický skener portálů (Webtrh.cz, Freelancer.com, WeWorkRemotely)
           </div>
           <div className={styles.triggerDesc}>
             Skener prochází nejnovější poptávky v kategoriích vývoje webů, e-shopů a redesignu. Poptávky se shodou nad 70 %
@@ -391,6 +391,20 @@ export function DemandsClient({ initialDemands, initialConfig }: Props) {
           </button>
           <button
             type="button"
+            className={`${styles.sourcePill} ${sourceFilter === "freelancer" ? styles.sourcePillActive : ""}`}
+            onClick={() => setSourceFilter("freelancer")}
+          >
+            Freelancer.com
+          </button>
+          <button
+            type="button"
+            className={`${styles.sourcePill} ${sourceFilter === "weworkremotely" ? styles.sourcePillActive : ""}`}
+            onClick={() => setSourceFilter("weworkremotely")}
+          >
+            WeWorkRemotely
+          </button>
+          <button
+            type="button"
             className={`${styles.sourcePill} ${sourceFilter === "startupjobs" ? styles.sourcePillActive : ""}`}
             onClick={() => setSourceFilter("startupjobs")}
           >
@@ -439,6 +453,10 @@ export function DemandsClient({ initialDemands, initialConfig }: Props) {
                       <span className={`${styles.sourceBadge} ${sourceBadgeClass(demand.source)}`}>
                         {demand.source === "webtrh"
                           ? "Webtrh"
+                          : demand.source === "freelancer"
+                          ? "Freelancer"
+                          : demand.source === "weworkremotely"
+                          ? "WWR"
                           : demand.source === "startupjobs"
                           ? "StartupJobs"
                           : "Vlastní vložení"}
@@ -603,6 +621,8 @@ function demandHeadClass(source: string) {
 
 function sourceBadgeClass(source: string) {
   if (source === "webtrh") return styles.badgeWebtrh;
+  if (source === "freelancer") return styles.badgeFreelancer;
+  if (source === "weworkremotely") return styles.badgeWeworkremotely;
   if (source === "startupjobs") return styles.badgeStartupjobs;
   return styles.badgeManual;
 }
