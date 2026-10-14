@@ -475,7 +475,7 @@ export function CampaignClient({
             {saveSuccess && <span className="small" style={{ color: "#10b981" }}>✓ Uloženo</span>}
           </div>
           <div className={styles.sectionDesc}>
-            Všechna nastavení se automaticky projeví při příštím běhu cronu i ručním spuštění.
+            Nastavení se ukládá automaticky ihned po kliknutí (nemusíte nic potvrzovat). Projeví se při příštím běhu cronu i ručním spuštění.
           </div>
         </div>
 
