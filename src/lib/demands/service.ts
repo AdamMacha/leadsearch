@@ -353,75 +353,75 @@ export async function scanAndProcessDemands(): Promise<{
     return !existingKeys.has(key);
   });
 
+  // Take up to 15 newest unseen items per scan to stay fast and responsive
+  const toProcess = newItems.slice(0, 15);
+
   const createdDemands: Demand[] = [];
   let highMatchCount = 0;
 
-  for (const item of newItems) {
-    try {
-      const analysis: DemandAnalysis = await evaluateDemandWithAi(
-        item.title,
-        item.description,
-        cfg
-      );
+  // Process in concurrent batches of 3
+  for (let i = 0; i < toProcess.length; i += 3) {
+    const chunk = toProcess.slice(i, i + 3);
+    await Promise.all(
+      chunk.map(async (item) => {
+        try {
+          const analysis: DemandAnalysis = await evaluateDemandWithAi(
+            item.title,
+            item.description,
+            cfg
+          );
 
-      const demand: Demand = {
-        id: `demand-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        source: item.source,
-        externalId: item.externalId,
-        title: item.title,
-        description: item.description,
-        url: item.url,
-        category: item.category || "Web / IT",
-        budget: analysis.estimatedBudget || item.budget || null,
-        publishedAt: item.publishedAt || now,
-        matchScore: analysis.matchScore,
-        fitLevel: analysis.fitLevel,
-        matchReason: analysis.matchReason,
-        keyRequirements: analysis.keyRequirements,
-        suggestedPitch: analysis.suggestedPitch,
-        status: "new",
-        notifiedAt: null,
-        createdAt: now,
-        updatedAt: now,
-      };
+          const demand: Demand = {
+            id: `demand-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            source: item.source,
+            externalId: item.externalId,
+            title: item.title,
+            description: item.description,
+            url: item.url,
+            category: item.category || "Web / IT",
+            budget: analysis.estimatedBudget || item.budget || null,
+            publishedAt: item.publishedAt || now,
+            matchScore: analysis.matchScore,
+            fitLevel: analysis.fitLevel,
+            matchReason: analysis.matchReason,
+            keyRequirements: analysis.keyRequirements,
+            suggestedPitch: analysis.suggestedPitch,
+            status: "new",
+            notifiedAt: null,
+            createdAt: now,
+            updatedAt: now,
+          };
 
-      // Check if eligible for Telegram alert
-      if (
-        cfg.notifyTelegram &&
-        demand.matchScore >= cfg.minMatchScore &&
-        !demand.notifiedAt
-      ) {
-        const sourceLabel =
-          demand.source === "webtrh"
-            ? "Webtrh.cz"
-            : demand.source === "startupjobs"
-            ? "StartupJobs.cz"
-            : demand.source;
+          // Check if eligible for Telegram alert
+          if (
+            cfg.notifyTelegram &&
+            demand.matchScore >= cfg.minMatchScore &&
+            !demand.notifiedAt
+          ) {
+            const sourceLabel =
+              demand.source === "webtrh"
+                ? "Webtrh.cz"
+                : demand.source === "startupjobs"
+                ? "StartupJobs.cz"
+                : demand.source;
 
-        const pitchPreview = demand.suggestedPitch.slice(0, 300);
+            const pitchPreview = demand.suggestedPitch.slice(0, 300);
 
-        const tgMessage = `🚨 <b>NOVÁ POPTÁVKA (Shoda: ${demand.matchScore} %)</b>
+            const tgMessage = `🚨 <b>NOVÁ POPTÁVKA (Shoda: ${demand.matchScore} %)</b>\n\n📌 <b>${escapeHtml(demand.title)}</b>\n🌐 <b>Zdroj:</b> ${sourceLabel}\n${demand.budget ? `💰 <b>Rozpočet:</b> ${escapeHtml(demand.budget)}\n` : ""}💡 <b>Proč sedí:</b> ${escapeHtml(demand.matchReason)}\n\n📝 <b>Návrh odpovědi:</b>\n<i>${escapeHtml(pitchPreview)}${demand.suggestedPitch.length > 300 ? "..." : ""}</i>\n\n${demand.url ? `🔗 <a href="${demand.url}">Otevřít zadání poptávky ↗</a>` : ""}`;
 
-📌 <b>${escapeHtml(demand.title)}</b>
-🌐 <b>Zdroj:</b> ${sourceLabel}
-${demand.budget ? `💰 <b>Rozpočet:</b> ${escapeHtml(demand.budget)}\n` : ""}💡 <b>Proč sedí:</b> ${escapeHtml(demand.matchReason)}
+            await notifyTelegram(tgMessage);
+            demand.notifiedAt = new Date().toISOString();
+            highMatchCount++;
+          }
 
-📝 <b>Návrh odpovědi:</b>
-<i>${escapeHtml(pitchPreview)}${demand.suggestedPitch.length > 300 ? "..." : ""}</i>
-
-${demand.url ? `🔗 <a href="${demand.url}">Otevřít zadání poptávky ↗</a>` : ""}`;
-
-        await notifyTelegram(tgMessage);
-        demand.notifiedAt = new Date().toISOString();
-        highMatchCount++;
-      }
-
-      await saveDemand(demand);
-      createdDemands.push(demand);
-      existingKeys.add(demand.externalId || demand.url || demand.title);
-    } catch (err) {
-      console.error(`Failed to process demand "${item.title}":`, err);
-    }
+          await saveDemand(demand);
+          createdDemands.push(demand);
+          existingKeys.add(demand.externalId || demand.url || demand.title);
+        } catch (err) {
+          console.error(`Failed to process demand "${item.title}":`, err);
+        }
+      })
+    );
   }
 
   // Update last scan timestamp

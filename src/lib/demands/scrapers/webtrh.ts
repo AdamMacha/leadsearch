@@ -14,8 +14,8 @@ export interface RawScrapedDemand {
 export async function scrapeWebtrhDemands(): Promise<RawScrapedDemand[]> {
   const urls = [
     "https://webtrh.cz/poptavky/",
-    "https://webtrh.cz/poptavky/poptavka-programovani-vyvoj/",
-    "https://webtrh.cz/poptavky/poptavka-webdesign-grafika/",
+    "https://webtrh.cz/poptavky/strana/2/",
+    "https://webtrh.cz/poptavky/strana/3/",
   ];
 
   const results: RawScrapedDemand[] = [];
@@ -55,10 +55,20 @@ export async function scrapeWebtrhDemands(): Promise<RawScrapedDemand[]> {
         const slugMatch = itemUrl.match(/\/poptavka\/([^\/]+)\/?$/);
         const externalId = slugMatch ? slugMatch[1] : itemUrl;
 
-        // Extract category if present
+        // Extract smart category based on title keywords
         let category = "Web / IT";
-        if (pageUrl.includes("programovani")) category = "Vývoj a programování";
-        else if (pageUrl.includes("webdesign")) category = "Webdesign a grafika";
+        const lowerTitle = itemTitle.toLowerCase();
+        if (/web|eshop|e-shop|stránk|bizbox|shoptet|landing|presta/i.test(lowerTitle)) {
+          category = "Tvorba webů a e-shopů";
+        } else if (/design|ux|ui|grafik|logo|banner/i.test(lowerTitle)) {
+          category = "Webdesign a grafika";
+        } else if (/program|kód|develop|react|next|php|wordpress|plugin|api|backend|frontend/i.test(lowerTitle)) {
+          category = "Vývoj a programování";
+        } else if (/marketing|seo|reklam|ads|ppc|facebook|meta|discover/i.test(lowerTitle)) {
+          category = "Online marketing & SEO";
+        } else if (/foto|kamer|dron|video/i.test(lowerTitle)) {
+          category = "Foto a video";
+        }
 
         results.push({
           source: "webtrh",

@@ -11,12 +11,12 @@ export async function proxy(request: NextRequest) {
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   const configuredAuditHost = process.env.AUDIT_HOST?.trim().toLowerCase();
 
-  const isAuditHost =
-    (configuredAuditHost && host === configuredAuditHost) ||
-    host === "web.technologio.eu" ||
+  const isDedicatedAuditHost =
+    Boolean(configuredAuditHost && host === configuredAuditHost) ||
     host === "audit.technologio.eu";
 
-  if (isAuditHost) {
+  // Dedicated audit host (e.g. audit.technologio.eu)
+  if (isDedicatedAuditHost) {
     if (pathname === "/") {
       return NextResponse.redirect(process.env.SENDER_WEB || "https://www.technologio.eu");
     }
@@ -26,6 +26,27 @@ export async function proxy(request: NextRequest) {
       return NextResponse.rewrite(new URL(`/a/${slug}`, request.url));
     }
     return new NextResponse("Not found", { status: 404 });
+  }
+
+  // App host (e.g. web.technologio.eu, localhost, vercel.app):
+  // Allow short clean audit slugs (e.g. web.technologio.eu/firma-slug) if not an app route
+  const isAppPath =
+    pathname === "/" ||
+    pathname === "/login" ||
+    pathname.startsWith("/campaign") ||
+    pathname.startsWith("/demands") ||
+    pathname.startsWith("/leads") ||
+    pathname.startsWith("/search") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/api/") ||
+    pathname.startsWith("/a/") ||
+    pathname.startsWith("/_next/");
+
+  if (!isAppPath) {
+    const slug = pathname.slice(1).split("/")[0];
+    if (/^[a-z0-9-]+$/.test(slug)) {
+      return NextResponse.rewrite(new URL(`/a/${slug}`, request.url));
+    }
   }
 
   const isPublic =
