@@ -177,17 +177,21 @@ export const supabaseRepo: Repo = {
     if (items.length === 0) return { leads: [], inserted: 0 };
     const placeIds = items.map((i) => i.placeId).filter(Boolean) as string[];
     const existing = placeIds.length
-      ? (check(await db().from("leads").select("place_id").in("place_id", placeIds)) as Row[])
+      ? ((check(await db().from("leads").select(LEAD_COLUMNS).in("place_id", placeIds)) as Row[]) ?? [])
       : [];
     const existingIds = new Set(existing.map((r) => r.place_id as string));
     const fresh = items.filter((i) => !i.placeId || !existingIds.has(i.placeId));
+    let insertedRows: Row[] = [];
     if (fresh.length) {
-      check(await db().from("leads").insert(fresh.map((i) => toRow({ ...i }))));
+      insertedRows = ((check(
+        await db()
+          .from("leads")
+          .insert(fresh.map((i) => toRow({ ...i })))
+          .select(LEAD_COLUMNS)
+      )) as Row[]) ?? [];
     }
-    const all = placeIds.length
-      ? (check(await db().from("leads").select(LEAD_COLUMNS).in("place_id", placeIds)) as Row[])
-      : [];
-    return { leads: all.map(toLead), inserted: fresh.length };
+    const allRows = [...existing, ...insertedRows];
+    return { leads: allRows.map(toLead), inserted: fresh.length };
   },
 
   async updateLead(id, patch: LeadPatch) {

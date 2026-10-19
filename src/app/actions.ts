@@ -188,15 +188,50 @@ export async function sendDirectEmailAction(id: string, subject: string, emailTe
 
 export async function addManualLeadAction(_prev: { error?: string } | undefined, formData: FormData) {
   await guard();
-  const name = String(formData.get("name") ?? "").trim();
+  let name = String(formData.get("name") ?? "").trim();
+  let website = String(formData.get("website") ?? "").trim() || null;
+  const city = String(formData.get("city") ?? "").trim() || null;
+  const phone = String(formData.get("phone") ?? "").trim() || null;
+  const category = String(formData.get("category") ?? "").trim() || null;
+
+  // Smart URL handling: if user pasted a website URL into the "name" field
+  if (/^https?:\/\//i.test(name) || /^www\./i.test(name) || /\.(cz|sk|com|eu|net|org|de|at)\/?$/i.test(name)) {
+    if (!website) {
+      website = name;
+    }
+    try {
+      const u = new URL(name.startsWith("http") ? name : `https://${name}`);
+      const cleanHost = u.hostname.replace(/^www\./, "");
+      const domainName = cleanHost.split(".")[0];
+      name = domainName.charAt(0).toUpperCase() + domainName.slice(1);
+    } catch {
+      // keep name as-is if URL parse fails
+    }
+  }
+
+  // Normalize website URL if entered without protocol
+  if (website && !/^https?:\/\//i.test(website)) {
+    website = `https://${website}`;
+  }
+
   if (!name) return { error: "Vyplň název firmy." };
-  const str = (k: string) => String(formData.get(k) ?? "").trim() || null;
-  const lead = await addManualLead({
-    name,
-    website: str("website"),
-    city: str("city"),
-    phone: str("phone"),
-    category: str("category"),
-  });
-  redirect(`/leads/${lead.id}?analyze=1`);
+
+  try {
+    const lead = await addManualLead({
+      name,
+      website,
+      city,
+      phone,
+      category,
+    });
+    if (!lead || !lead.id) {
+      return { error: "Nepodařilo se vytvořit firmu. Zkus to prosím znovu." };
+    }
+    redirect(`/leads/${lead.id}?analyze=1`);
+  } catch (err) {
+    if ((err as { digest?: string })?.digest?.startsWith("NEXT_REDIRECT")) {
+      throw err;
+    }
+    return { error: (err as Error).message || "Chyba při ukládání firmy." };
+  }
 }
