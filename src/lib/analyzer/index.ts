@@ -35,6 +35,7 @@ async function fetchPage(url: string, timeoutMs = 15_000) {
 export interface AnalyzeOptions {
   pageSpeed?: boolean;
   pageSpeedKey?: string;
+  skipNoEmail?: boolean;
 }
 
 export interface AnalyzeResult {
@@ -82,8 +83,9 @@ export async function analyzeLead(
 
   if (url) {
     try {
-      // Kick off PageSpeed in parallel – it's the slow part (10–40 s).
-      const psiPromise = opts.pageSpeed !== false ? runPageSpeed(url, opts.pageSpeedKey) : null;
+      // If the lead already has an email or skipNoEmail is not set, kick off PageSpeed in parallel
+      const canRunPsiInParallel = opts.pageSpeed !== false && (Boolean(lead.email) || !opts.skipNoEmail);
+      let psiPromise = canRunPsiInParallel ? runPageSpeed(url, opts.pageSpeedKey) : null;
 
       const { res, html, responseTimeMs } = await fetchPage(url);
       const finalUrl = res.url || url;
@@ -122,9 +124,15 @@ export async function analyzeLead(
             /* ignore */
           }
         }
+
+        // If PageSpeed was deferred, only start it if an email was actually found (or skipNoEmail is false)
+        const hasEmail = Boolean(lead.email) || base.emails.length > 0;
+        if (!psiPromise && opts.pageSpeed !== false && (hasEmail || !opts.skipNoEmail)) {
+          psiPromise = runPageSpeed(finalUrl, opts.pageSpeedKey);
+        }
       }
 
-      if (psiPromise) {
+      if (psiPromise && base.reachable) {
         const psi = await psiPromise;
         base.pageSpeed = psi.result;
         screenshot = psi.screenshot;

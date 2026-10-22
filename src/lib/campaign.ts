@@ -382,13 +382,13 @@ export function checkWorkingHours(): {
   const hour = pragueDate.getHours() + pragueDate.getMinutes() / 60;
 
   const isWorkingDay = day >= 1 && day <= 5;
-  const isWorkingHour = hour >= 8.5 && hour < 17.0; // 8:30 to 17:00
+  const isWorkingHour = hour >= 8.0 && hour < 17.5; // 8:00 to 17:30 CET
 
   let reason: string | undefined;
   if (!isWorkingDay) {
     reason = "Dnes je víkend (kampaň odesílá pouze Po–Pá).";
   } else if (!isWorkingHour) {
-    reason = `Mimo pracovní dobu (aktuální čas v ČR: ${pragueDate.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}, kampaň odesílá v čase 8:30–17:00).`;
+    reason = `Mimo pracovní dobu (aktuální čas v ČR: ${pragueDate.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}, kampaň odesílá v čase 8:00–17:30).`;
   }
 
   return { isWorkingDay, isWorkingHour, reason };
@@ -438,6 +438,10 @@ export async function runAutonomousCampaign(
   dailyLimit: number;
 }> {
   const startedAt = new Date().toISOString();
+  const startTime = Date.now();
+  // Safe execution limit before Vercel 300s timeout (leave 50s for saving state & Telegram notification)
+  const MAX_EXECUTION_MS = 250_000;
+
   const configObj = await getCampaignConfig();
   const trigger = opts.trigger ?? "cron";
   const force = Boolean(opts.force);
@@ -488,117 +492,171 @@ export async function runAutonomousCampaign(
     };
   }
 
-  const remainingQuota = force
-    ? (opts.limitOverride ?? Math.min(5, configObj.dailyLimit))
+  // Target quota of successfully sent (or prepared) emails for this run:
+  const targetQuota = force
+    ? (opts.limitOverride ?? Math.max(1, configObj.dailyLimit - sentToday))
     : Math.max(1, configObj.dailyLimit - sentToday);
 
   const r = repo();
-  let leads = await r.listLeads({});
-
-  // Eligible leads in database: new status, uncontacted and meeting criteria
-  let eligible = leads
-    .filter((l) => isLeadEligibleForCampaign(l, configObj))
-    .sort(sortCampaignCandidates);
-
-  let searchedQuery: string | undefined;
-  let searchedLocation: string | undefined;
-  let newLeadsFound = 0;
-  const searchedQueries: { niche: string; city: string; inserted: number }[] = [];
   let currentNicheIdx = configObj.currentNicheIndex;
   let currentLocIdx = configObj.currentLocationIndex;
+  let newLeadsFound = 0;
+  const searchedQueries: { niche: string; city: string; inserted: number }[] = [];
+  let searchAttempts = 0;
+  const MAX_SEARCH_ATTEMPTS = 15;
 
-  // 4. Auto-Search if not enough leads in database (with smart rotation)
-  if (eligible.length < remainingQuota && configObj.niches.length > 0 && configObj.locations.length > 0) {
-    let attempts = 0;
-    const maxAttempts = 3;
+  async function performSearchRotation(): Promise<number> {
+    if (configObj.niches.length === 0 || configObj.locations.length === 0) return 0;
+    if (searchAttempts >= MAX_SEARCH_ATTEMPTS) return 0;
 
-    while (eligible.length < remainingQuota && attempts < maxAttempts) {
-      attempts++;
-      const niche = configObj.niches[currentNicheIdx % configObj.niches.length];
-      const city = configObj.locations[currentLocIdx % configObj.locations.length];
+    searchAttempts++;
+    const niche = configObj.niches[currentNicheIdx % configObj.niches.length];
+    const city = configObj.locations[currentLocIdx % configObj.locations.length];
 
-      try {
-        const searchRes = await runSearch(niche, city, 1);
-        newLeadsFound += searchRes.inserted;
-        searchedQueries.push({ niche, city, inserted: searchRes.inserted });
+    currentNicheIdx = (currentNicheIdx + 1) % configObj.niches.length;
+    currentLocIdx = (currentLocIdx + 1) % configObj.locations.length;
 
-        // Advance indices
-        currentNicheIdx = (currentNicheIdx + 1) % configObj.niches.length;
-        currentLocIdx = (currentLocIdx + 1) % configObj.locations.length;
-
-        // Refetch leads
-        leads = await r.listLeads({});
-        eligible = leads
-          .filter((l) => isLeadEligibleForCampaign(l, configObj))
-          .sort(sortCampaignCandidates);
-
-        // If this search found new leads or we have enough eligible candidates, stop searching
-        if (searchRes.inserted > 0 || eligible.length >= remainingQuota) {
-          break;
-        }
-      } catch (err) {
-        console.error(`Auto search failed for ${niche} ${city}:`, err);
-        currentNicheIdx = (currentNicheIdx + 1) % configObj.niches.length;
-        currentLocIdx = (currentLocIdx + 1) % configObj.locations.length;
-      }
-    }
-
-    // Persist updated rotation indices
-    configObj.currentNicheIndex = currentNicheIdx;
-    configObj.currentLocationIndex = currentLocIdx;
-    await saveCampaignConfig({
-      currentNicheIndex: currentNicheIdx,
-      currentLocationIndex: currentLocIdx,
-    });
-
-    if (searchedQueries.length > 0) {
-      searchedQuery = searchedQueries.map((s) => s.niche).join(", ");
-      searchedLocation = searchedQueries.map((s) => s.city).join(", ");
+    try {
+      // Use pages = 2 for higher yield of fresh leads
+      const searchRes = await runSearch(niche, city, 2);
+      newLeadsFound += searchRes.inserted;
+      searchedQueries.push({ niche, city, inserted: searchRes.inserted });
+      return searchRes.inserted;
+    } catch (err) {
+      console.error(`Auto search failed for ${niche} ${city}:`, err);
+      return 0;
     }
   }
 
-  // Take candidates for this batch
-  const toProcess = eligible.slice(0, remainingQuota);
+  async function fetchEligiblePool(): Promise<Lead[]> {
+    const all = await r.listLeads({});
+    return all
+      .filter((l) => isLeadEligibleForCampaign(l, configObj))
+      .sort(sortCampaignCandidates);
+  }
+
+  let eligible = await fetchEligiblePool();
+
+  // If candidate pool is low, pre-populate via search rotation
+  while (eligible.length < targetQuota * 2 && searchAttempts < 6) {
+    if (Date.now() - startTime > 45_000) break;
+    await performSearchRotation();
+    eligible = await fetchEligiblePool();
+    if (eligible.length >= targetQuota * 3) break;
+  }
 
   const runItems: CampaignRunItem[] = [];
   let sentCount = 0;
   let preparedCount = 0;
   let skippedCount = 0;
   let errorCount = 0;
+  const processedLeadIds = new Set<string>();
 
-  for (let i = 0; i < toProcess.length; i++) {
-    const candidate = toProcess[i];
+  const isTargetMet = () => {
+    const successCount = configObj.mode === "full" ? sentCount : (sentCount + preparedCount);
+    return successCount >= targetQuota;
+  };
+
+  const MAX_EVALUATIONS = 120;
+  let evaluatedCount = 0;
+
+  while (!isTargetMet() && evaluatedCount < MAX_EVALUATIONS) {
+    // 1. Check time limit
+    if (Date.now() - startTime > MAX_EXECUTION_MS) {
+      console.warn(
+        `[Campaign] Approaching execution deadline (${Math.round(
+          (Date.now() - startTime) / 1000
+        )}s). Wrapping up current run cleanly.`
+      );
+      break;
+    }
+
+    // 2. If eligible candidate queue is empty, try to replenish via search rotation
+    if (eligible.length === 0) {
+      let foundMore = false;
+      while (searchAttempts < MAX_SEARCH_ATTEMPTS && !foundMore) {
+        if (Date.now() - startTime > MAX_EXECUTION_MS) break;
+        const inserted = await performSearchRotation();
+        if (inserted > 0) {
+          const fresh = await fetchEligiblePool();
+          eligible = fresh.filter((l) => !processedLeadIds.has(l.id));
+          if (eligible.length > 0) {
+            foundMore = true;
+            break;
+          }
+        }
+      }
+      if (!foundMore || eligible.length === 0) {
+        // No more candidates available even after rotating through search queries
+        break;
+      }
+    }
+
+    // 3. Take next candidate
+    const candidate = eligible.shift()!;
+    if (processedLeadIds.has(candidate.id)) continue;
+    processedLeadIds.add(candidate.id);
+    evaluatedCount++;
+
     const autoSend = configObj.mode === "full";
 
-    const res = await processLeadAutopilot(candidate.id, {
-      autoSend,
-      fastMode: configObj.fastMode,
-      minNeedScore: configObj.minNeedScore,
-      skipNoEmail: configObj.skipNoEmail,
-      sourceTrigger: "campaign",
-    });
+    try {
+      const res = await processLeadAutopilot(candidate.id, {
+        autoSend,
+        fastMode: configObj.fastMode,
+        minNeedScore: configObj.minNeedScore,
+        skipNoEmail: configObj.skipNoEmail,
+        sourceTrigger: "campaign",
+      });
 
-    if (res.status === "sent") sentCount++;
-    else if (res.status === "prepared") preparedCount++;
-    else if (res.status === "skipped") skippedCount++;
-    else if (res.status === "error") errorCount++;
+      if (res.status === "sent") sentCount++;
+      else if (res.status === "prepared") preparedCount++;
+      else if (res.status === "skipped") skippedCount++;
+      else if (res.status === "error") errorCount++;
 
-    runItems.push({
-      leadId: candidate.id,
-      leadName: candidate.name,
-      email: candidate.email,
-      status: res.status,
-      reason: res.reason,
-      auditLink: res.auditLink,
-    });
+      runItems.push({
+        leadId: candidate.id,
+        leadName: candidate.name,
+        email: res.recipient || candidate.email || (res.lead?.email ?? null),
+        status: res.status,
+        reason: res.reason,
+        auditLink: res.auditLink,
+      });
 
-    // Safe delay between outgoing emails
-    if (autoSend && configObj.delaySeconds > 0 && i < toProcess.length - 1) {
-      await sleep(configObj.delaySeconds * 1000);
+      // Pause between outgoing emails ONLY after an email is actually sent
+      if (res.status === "sent" && configObj.delaySeconds > 0 && !isTargetMet()) {
+        await sleep(configObj.delaySeconds * 1000);
+      }
+    } catch (err) {
+      errorCount++;
+      runItems.push({
+        leadId: candidate.id,
+        leadName: candidate.name,
+        email: candidate.email,
+        status: "error",
+        reason: (err as Error).message,
+      });
     }
   }
 
   const finishedAt = new Date().toISOString();
+
+  // Persist updated rotation indices and lastRunAt
+  configObj.currentNicheIndex = currentNicheIdx;
+  configObj.currentLocationIndex = currentLocIdx;
+  await saveCampaignConfig({
+    currentNicheIndex: currentNicheIdx,
+    currentLocationIndex: currentLocIdx,
+    lastRunAt: finishedAt,
+  });
+
+  let searchedQuery: string | undefined;
+  let searchedLocation: string | undefined;
+  if (searchedQueries.length > 0) {
+    searchedQuery = searchedQueries.map((s) => s.niche).join(", ");
+    searchedLocation = searchedQueries.map((s) => s.city).join(", ");
+  }
+
   const runLog: CampaignRunLog = {
     id: `run-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     startedAt,
@@ -608,7 +666,7 @@ export async function runAutonomousCampaign(
     searchedQuery,
     searchedLocation,
     newLeadsFound,
-    processedCount: toProcess.length,
+    processedCount: evaluatedCount,
     sentCount,
     preparedCount,
     skippedCount,
@@ -617,17 +675,16 @@ export async function runAutonomousCampaign(
   };
 
   await recordCampaignRun(runLog);
-  await saveCampaignConfig({ lastRunAt: finishedAt });
 
   // 5. Telegram Notification
-  if (toProcess.length > 0 || newLeadsFound > 0) {
+  if (runItems.length > 0 || newLeadsFound > 0) {
     const sentList = runItems
       .filter((it) => it.status === "sent" || it.status === "prepared")
       .map(
         (it) =>
           `• <b>${it.leadName}</b> (${it.email || "bez e-mailu"}) ${it.status === "sent" ? "✉️ odesláno" : "📝 připraveno"}`
       )
-      .slice(0, 8)
+      .slice(0, 15)
       .join("\n");
 
     const skippedList = runItems
@@ -666,7 +723,7 @@ export async function runAutonomousCampaign(
       `🤖 <b>[LeadRadar] Běh autonomní kampaně dokončen</b>\n` +
       `📌 Režim: <b>${modeName}</b>\n` +
       `✉️ Dnes odesláno celkem: <b>${sentToday + sentCount} / ${configObj.dailyLimit}</b>\n` +
-      `🏢 V této dávce: <b>${sentCount} odesláno</b>, <b>${preparedCount} připraveno</b>, <b>${skippedCount} přeskočeno</b>\n` +
+      `🏢 Výsledek běhu: <b>${sentCount} odesláno</b>, <b>${preparedCount} připraveno</b>, <b>${skippedCount} přeskočeno</b> (analyzováno celkem ${evaluatedCount} firem)\n` +
       searchSummary +
       batchSummary +
       `\n⏭️ Další v rotaci: <i>${nextNiche} · ${nextLoc}</i>`

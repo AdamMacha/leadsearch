@@ -159,13 +159,16 @@ export function CampaignClient({
     }
   }
 
-  async function triggerManualRun() {
+  async function triggerManualRun(runMode: "test" | "full" = "full") {
     if (triggering) return;
     setTriggering(true);
     setTriggerResult(null);
     try {
-      const batchLimit = Math.min(5, cfg.dailyLimit);
-      const res = await fetch(`/api/cron/campaign?force=1&limit=${batchLimit}`, { method: "POST" });
+      const url =
+        runMode === "test"
+          ? `/api/cron/campaign?force=1&limit=5`
+          : `/api/cron/campaign?force=1`;
+      const res = await fetch(url, { method: "POST" });
       const data = await res.json();
       setTriggerResult(data);
 
@@ -316,24 +319,38 @@ export function CampaignClient({
         <div className={styles.triggerInfo}>
           <div className={styles.triggerTitle}>
             <IconZap size={18} style={{ color: "#fbbf24" }} />
-            Ruční testovací spuštění dávky
+            Ruční spuštění kampaně
           </div>
           <div className={styles.triggerDesc}>
-            Chcete ihned otestovat průchod kampaně? Kliknutím spustíte 1 testovací dávku (až pro {Math.min(5, cfg.dailyLimit)} firem) ihned
-            bez ohledu na časový plán cronu.
+            Kampaň automaticky rotuje odvětví a analyzuje tolik firem, kolik je potřeba k odeslání plné cílové dávky (<strong>{cfg.dailyLimit} e-mailů/den</strong>).
+            Můžete spustit buď plnou denní dávku hned, nebo rychlý test pro 5 firem.
           </div>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-primary"
-          onClick={triggerManualRun}
-          disabled={triggering}
-          style={{ background: "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)", color: "white" }}
-        >
-          {triggering ? <span className="spinner" /> : <IconZap size={16} />}
-          {triggering ? "Zpracovávám dávku…" : "⚡ Spustit dávku hned"}
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => triggerManualRun("full")}
+            disabled={triggering}
+            style={{ background: "linear-gradient(135deg, #6366f1 0%, #a855f7 100%)", color: "white" }}
+          >
+            {triggering ? <span className="spinner" /> : <IconZap size={16} />}
+            {triggering
+              ? "Zpracovávám kampaň…"
+              : `⚡ Spustit plnou denní dávku (${Math.max(0, cfg.dailyLimit - sentToday)} zbývá)`}
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => triggerManualRun("test")}
+            disabled={triggering}
+            style={{ border: "1px solid var(--border)", fontSize: 13 }}
+          >
+            🧪 Test (5 firem)
+          </button>
+        </div>
       </section>
 
       {/* Result feedback of manual run */}
@@ -390,6 +407,14 @@ export function CampaignClient({
                 <span className={styles.resultPill} style={{ color: skip > 0 ? "#fbbf24" : "var(--text-3)" }}>
                   ⏭️ {skip} přeskočeno
                 </span>
+                <span className={styles.resultPill} style={{ color: "var(--text-2)" }}>
+                  🔍 {run?.processedCount ?? run?.items?.length ?? 0} prověřeno
+                </span>
+                {Boolean(run?.newLeadsFound) && (
+                  <span className={styles.resultPill} style={{ color: "#38bdf8" }}>
+                    ✨ +{run?.newLeadsFound} nových
+                  </span>
+                )}
                 {errCount > 0 && (
                   <span className={styles.resultPill} style={{ color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.4)" }}>
                     ❌ {errCount} chyb
@@ -759,7 +784,7 @@ export function CampaignClient({
               type="button"
               className="btn btn-sm btn-primary"
               style={{ marginTop: 10 }}
-              onClick={triggerManualRun}
+              onClick={() => triggerManualRun("full")}
             >
               Spustit první zkušební běh
             </button>
@@ -776,6 +801,7 @@ export function CampaignClient({
                   <th>Odesláno</th>
                   <th>Připraveno</th>
                   <th>Přeskočeno</th>
+                  <th>Prověřeno</th>
                   <th>Detail</th>
                 </tr>
               </thead>
@@ -815,6 +841,9 @@ export function CampaignClient({
                         </td>
                         <td>{r.preparedCount}</td>
                         <td className="muted">{r.skippedCount}</td>
+                        <td className="small muted">
+                          {r.processedCount ? `${r.processedCount} firem` : `${r.items.length} firem`}
+                        </td>
                         <td>
                           {r.items.length > 0 && (
                             <button

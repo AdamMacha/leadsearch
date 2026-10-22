@@ -59,7 +59,7 @@ export async function processLeadAutopilot(
   // 2. Analyze website if not yet analyzed
   try {
     if (!lead.analyzedAt) {
-      lead = await analyzeAndSave(id, { pageSpeed: !fastMode });
+      lead = await analyzeAndSave(id, { pageSpeed: !fastMode, skipNoEmail });
     }
   } catch (err) {
     return {

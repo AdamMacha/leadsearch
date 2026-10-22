@@ -33,13 +33,17 @@ export async function addManualLead(input: Pick<NewLead, "name" | "website" | "c
   return leads[0];
 }
 
-export async function analyzeAndSave(id: string, options?: { pageSpeed?: boolean }): Promise<Lead> {
+export async function analyzeAndSave(
+  id: string,
+  options?: { pageSpeed?: boolean; skipNoEmail?: boolean }
+): Promise<Lead> {
   const r = repo();
   const lead = await r.getLead(id);
   if (!lead) throw new Error("Lead nenalezen");
   const res = await analyzeLead(lead, {
     pageSpeed: options?.pageSpeed !== false,
     pageSpeedKey: config.pageSpeedKey,
+    skipNoEmail: options?.skipNoEmail,
   });
   const updated = await r.updateLead(id, {
     analysis: res.analysis,
