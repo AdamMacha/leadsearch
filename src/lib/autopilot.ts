@@ -1,4 +1,5 @@
 import "server-only";
+import { sanitizeEmail } from "./analyzer/html";
 import { config, auditUrl } from "./config";
 import { repo } from "./db";
 import { notifyTelegram } from "./notify";
@@ -70,6 +71,14 @@ export async function processLeadAutopilot(
     };
   }
 
+  // 2.5 Sanitize email if present
+  if (lead.email) {
+    const cleaned = sanitizeEmail(lead.email);
+    if (cleaned !== lead.email) {
+      lead = await r.updateLead(id, { email: cleaned });
+    }
+  }
+
   // 3. Qualification filter
   if (skipNoEmail && !lead.email) {
     return {
@@ -80,7 +89,7 @@ export async function processLeadAutopilot(
     };
   }
 
-  if (lead.website && lead.needScore != null && lead.needScore < minNeedScore) {
+  if (minNeedScore > 0 && lead.website && lead.needScore != null && lead.needScore < minNeedScore) {
     return {
       ok: true,
       status: "skipped",

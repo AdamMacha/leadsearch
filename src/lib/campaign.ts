@@ -1,11 +1,12 @@
 import "server-only";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { sanitizeEmail } from "./analyzer/html";
 import { processLeadAutopilot } from "./autopilot";
 import { config } from "./config";
 import { repo } from "./db";
 import { notifyTelegram } from "./notify";
-import { runSearch } from "./services";
+import { analyzeAndSave, runSearch } from "./services";
 import type { Lead } from "./types";
 
 export interface CampaignConfig {
@@ -54,14 +55,14 @@ export interface CampaignRunLog {
 
 export const DEFAULT_CAMPAIGN_CONFIG: CampaignConfig = {
   enabled: true,
-  mode: "prepare", // Safe preview default so Adam can inspect before full auto
+  mode: "full",
   dailyLimit: 15,
-  minNeedScore: 35,
+  minNeedScore: 0,
   skipNoEmail: true,
-  workingDaysOnly: true,
-  workHoursOnly: true,
-  delaySeconds: 6,
-  fastMode: false,
+  workingDaysOnly: false,
+  workHoursOnly: false,
+  delaySeconds: 4,
+  fastMode: true,
   niches: [
     "rekonstrukce bytů",
     "stavební firma",
@@ -378,17 +379,15 @@ export function checkWorkingHours(): {
   const now = new Date();
   const pragueStr = now.toLocaleString("en-US", { timeZone: "Europe/Prague" });
   const pragueDate = new Date(pragueStr);
-  const day = pragueDate.getDay(); // 0 is Sunday, 6 is Saturday
   const hour = pragueDate.getHours() + pragueDate.getMinutes() / 60;
 
-  const isWorkingDay = day >= 1 && day <= 5;
-  const isWorkingHour = hour >= 8.0 && hour < 17.5; // 8:00 to 17:30 CET
+  // Odesílání povoleno každý den včetně soboty a neděle (Po–Ne)
+  const isWorkingDay = true;
+  const isWorkingHour = hour >= 7.0 && hour < 20.0; // 7:00 to 20:00 CET
 
   let reason: string | undefined;
-  if (!isWorkingDay) {
-    reason = "Dnes je víkend (kampaň odesílá pouze Po–Pá).";
-  } else if (!isWorkingHour) {
-    reason = `Mimo pracovní dobu (aktuální čas v ČR: ${pragueDate.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}, kampaň odesílá v čase 8:00–17:30).`;
+  if (!isWorkingHour) {
+    reason = `Mimo povolenou dobu (aktuální čas v ČR: ${pragueDate.toLocaleTimeString("cs-CZ", { hour: "2-digit", minute: "2-digit" })}, kampaň odesílá v čase 7:00–20:00).`;
   }
 
   return { isWorkingDay, isWorkingHour, reason };
@@ -400,16 +399,24 @@ export interface RunCampaignOptions {
   limitOverride?: number;
 }
 
-export function isLeadEligibleForCampaign(l: Lead, configObj: CampaignConfig): boolean {
+export function isLeadEligibleForCampaign(
+  l: Lead,
+  configObj: CampaignConfig,
+  minNeedScoreOverride?: number
+): boolean {
   // Only process leads with 'new' status
   if (l.status !== "new") return false;
 
+  const effectiveMinScore =
+    typeof minNeedScoreOverride === "number" ? minNeedScoreOverride : configObj.minNeedScore;
+
   // If already analyzed:
   if (l.analyzedAt) {
-    // If skipNoEmail is enabled, must have an email
-    if (configObj.skipNoEmail && !l.email) return false;
+    const cleanEmail = l.email ? sanitizeEmail(l.email) : null;
+    // If skipNoEmail is enabled, must have a valid email
+    if (configObj.skipNoEmail && !cleanEmail) return false;
     // Must meet or exceed minimum needScore threshold
-    if ((l.needScore ?? 0) < configObj.minNeedScore) return false;
+    if ((l.needScore ?? 0) < effectiveMinScore) return false;
     return true;
   }
 
@@ -420,11 +427,23 @@ export function isLeadEligibleForCampaign(l: Lead, configObj: CampaignConfig): b
   return true;
 }
 
+function candidateRankScore(l: Lead): number {
+  const need = l.needScore ?? 0;
+  const hasValidEmail = Boolean(l.email && sanitizeEmail(l.email));
+  if (l.analyzedAt && hasValidEmail && l.audit && l.outreach) {
+    return 2000 + need;
+  }
+  if (l.analyzedAt && hasValidEmail) {
+    return 1000 + need;
+  }
+  if (!l.analyzedAt && hasValidEmail) {
+    return 500 + need;
+  }
+  return need;
+}
+
 export function sortCampaignCandidates(a: Lead, b: Lead): number {
-  // Qualified leads with high needScore prioritized, then fresh unanalyzed
-  const aScore = a.analyzedAt ? (a.needScore ?? 0) : 50;
-  const bScore = b.analyzedAt ? (b.needScore ?? 0) : 50;
-  return bScore - aScore;
+  return candidateRankScore(b) - candidateRankScore(a);
 }
 
 export async function runAutonomousCampaign(
@@ -439,8 +458,8 @@ export async function runAutonomousCampaign(
 }> {
   const startedAt = new Date().toISOString();
   const startTime = Date.now();
-  // Safe execution limit before Vercel 300s timeout (leave 50s for saving state & Telegram notification)
-  const MAX_EXECUTION_MS = 250_000;
+  // Safe execution limit before Vercel 300s timeout (leave 45s for saving state & Telegram notification)
+  const MAX_EXECUTION_MS = 255_000;
 
   const configObj = await getCampaignConfig();
   const trigger = opts.trigger ?? "cron";
@@ -457,30 +476,7 @@ export async function runAutonomousCampaign(
     };
   }
 
-  // 2. Working days and hours check (unless forced)
-  if (!force) {
-    const hours = checkWorkingHours();
-    if (configObj.workingDaysOnly && !hours.isWorkingDay) {
-      return {
-        ok: true,
-        status: "skipped",
-        reason: hours.reason,
-        sentToday: await getSentTodayCount(),
-        dailyLimit: configObj.dailyLimit,
-      };
-    }
-    if (configObj.workHoursOnly && !hours.isWorkingHour) {
-      return {
-        ok: true,
-        status: "skipped",
-        reason: hours.reason,
-        sentToday: await getSentTodayCount(),
-        dailyLimit: configObj.dailyLimit,
-      };
-    }
-  }
-
-  // 3. Daily quota check
+  // 2. Daily quota check
   const sentToday = await getSentTodayCount();
   if (!force && sentToday >= configObj.dailyLimit) {
     return {
@@ -528,21 +524,31 @@ export async function runAutonomousCampaign(
     }
   }
 
-  async function fetchEligiblePool(): Promise<Lead[]> {
-    const all = await r.listLeads({});
-    return all
-      .filter((l) => isLeadEligibleForCampaign(l, configObj))
-      .sort(sortCampaignCandidates);
+  // Fast parallel pre-analysis of unanalyzed leads (5 at a time without slow PageSpeed)
+  async function preAnalyzeBatch(leadsToAnalyze: Lead[]): Promise<void> {
+    const batch = leadsToAnalyze.slice(0, 5);
+    if (batch.length === 0) return;
+    await Promise.allSettled(
+      batch.map((l) =>
+        analyzeAndSave(l.id, {
+          pageSpeed: false,
+          skipNoEmail: configObj.skipNoEmail,
+        })
+      )
+    );
   }
 
-  let eligible = await fetchEligiblePool();
-
-  // If candidate pool is low, pre-populate via search rotation
-  while (eligible.length < targetQuota * 2 && searchAttempts < 6) {
-    if (Date.now() - startTime > 45_000) break;
-    await performSearchRotation();
-    eligible = await fetchEligiblePool();
-    if (eligible.length >= targetQuota * 3) break;
+  async function fetchPool(minScoreOverride: number, excludeIds: Set<string>): Promise<{
+    readyWithEmail: Lead[];
+    unanalyzed: Lead[];
+  }> {
+    const all = await r.listLeads({});
+    const filtered = all
+      .filter((l) => !excludeIds.has(l.id) && isLeadEligibleForCampaign(l, configObj, minScoreOverride))
+      .sort(sortCampaignCandidates);
+    const readyWithEmail = filtered.filter((l) => Boolean(l.analyzedAt && l.email && sanitizeEmail(l.email)));
+    const unanalyzed = filtered.filter((l) => !l.analyzedAt);
+    return { readyWithEmail, unanalyzed };
   }
 
   const runItems: CampaignRunItem[] = [];
@@ -552,59 +558,86 @@ export async function runAutonomousCampaign(
   let errorCount = 0;
   const processedLeadIds = new Set<string>();
 
-  const isTargetMet = () => {
-    const successCount = configObj.mode === "full" ? sentCount : (sentCount + preparedCount);
-    return successCount >= targetQuota;
-  };
+  const getSuccessCount = () => (configObj.mode === "full" ? sentCount : sentCount + preparedCount);
+  const isTargetMet = () => getSuccessCount() >= targetQuota;
 
-  const MAX_EVALUATIONS = 120;
+  // Start with configured minNeedScore, but relax to 0 automatically if not enough strict candidates exist
+  let effectiveMinScore = configObj.minNeedScore;
+
+  const MAX_EVALUATIONS = 150;
   let evaluatedCount = 0;
 
   while (!isTargetMet() && evaluatedCount < MAX_EVALUATIONS) {
-    // 1. Check time limit
-    if (Date.now() - startTime > MAX_EXECUTION_MS) {
+    const elapsedMs = Date.now() - startTime;
+    if (elapsedMs > MAX_EXECUTION_MS) {
       console.warn(
-        `[Campaign] Approaching execution deadline (${Math.round(
-          (Date.now() - startTime) / 1000
-        )}s). Wrapping up current run cleanly.`
+        `[Campaign] Approaching execution deadline (${Math.round(elapsedMs / 1000)}s). Wrapping up current run cleanly.`
       );
       break;
     }
 
-    // 2. If eligible candidate queue is empty, try to replenish via search rotation
-    if (eligible.length === 0) {
-      let foundMore = false;
-      while (searchAttempts < MAX_SEARCH_ATTEMPTS && !foundMore) {
-        if (Date.now() - startTime > MAX_EXECUTION_MS) break;
-        const inserted = await performSearchRotation();
-        if (inserted > 0) {
-          const fresh = await fetchEligiblePool();
-          eligible = fresh.filter((l) => !processedLeadIds.has(l.id));
-          if (eligible.length > 0) {
-            foundMore = true;
-            break;
-          }
-        }
-      }
-      if (!foundMore || eligible.length === 0) {
-        // No more candidates available even after rotating through search queries
-        break;
+    // Fetch current pool of ready analyzed leads and unanalyzed leads
+    let { readyWithEmail, unanalyzed } = await fetchPool(effectiveMinScore, processedLeadIds);
+
+    // If we don't have enough ready-to-send leads with email at the strict minNeedScore,
+    // immediately check if relaxing minNeedScore to 0 gives us ready leads with email (sorted highest needScore first!)
+    if (readyWithEmail.length === 0 && effectiveMinScore > 0) {
+      const relaxed = await fetchPool(0, processedLeadIds);
+      if (relaxed.readyWithEmail.length > 0) {
+        effectiveMinScore = 0;
+        readyWithEmail = relaxed.readyWithEmail;
+        unanalyzed = relaxed.unanalyzed;
       }
     }
 
-    // 3. Take next candidate
-    const candidate = eligible.shift()!;
-    if (processedLeadIds.has(candidate.id)) continue;
+    // If still no ready leads with email, pre-analyze unanalyzed leads in fast parallel batches of 5
+    while (readyWithEmail.length < targetQuota - getSuccessCount() && Date.now() - startTime < MAX_EXECUTION_MS - 30_000) {
+      if (unanalyzed.length === 0) {
+        if (searchAttempts >= MAX_SEARCH_ATTEMPTS) break;
+        const inserted = await performSearchRotation();
+        if (inserted === 0) continue;
+      }
+
+      const currentPool = await fetchPool(0, processedLeadIds);
+      if (currentPool.unanalyzed.length > 0) {
+        await preAnalyzeBatch(currentPool.unanalyzed);
+      }
+
+      const updatedPool = await fetchPool(effectiveMinScore, processedLeadIds);
+      readyWithEmail = updatedPool.readyWithEmail;
+      unanalyzed = updatedPool.unanalyzed;
+
+      if (readyWithEmail.length === 0 && effectiveMinScore > 0) {
+        const relaxedPool = await fetchPool(0, processedLeadIds);
+        if (relaxedPool.readyWithEmail.length > 0) {
+          effectiveMinScore = 0;
+          readyWithEmail = relaxedPool.readyWithEmail;
+          unanalyzed = relaxedPool.unanalyzed;
+        }
+      }
+
+      // As soon as we have at least a few ready leads with email, start sending them!
+      if (readyWithEmail.length > 0) break;
+      if (unanalyzed.length === 0 && searchAttempts >= MAX_SEARCH_ATTEMPTS) break;
+    }
+
+    const candidate = readyWithEmail[0] ?? unanalyzed[0];
+    if (!candidate) {
+      // No more candidates available at all
+      break;
+    }
+
     processedLeadIds.add(candidate.id);
     evaluatedCount++;
 
     const autoSend = configObj.mode === "full";
 
     try {
+      // Always use fastMode: true during autonomous campaign to avoid 25s PageSpeed bottlenecks
       const res = await processLeadAutopilot(candidate.id, {
         autoSend,
-        fastMode: configObj.fastMode,
-        minNeedScore: configObj.minNeedScore,
+        fastMode: true,
+        minNeedScore: effectiveMinScore,
         skipNoEmail: configObj.skipNoEmail,
         sourceTrigger: "campaign",
       });
@@ -623,9 +656,19 @@ export async function runAutonomousCampaign(
         auditLink: res.auditLink,
       });
 
-      // Pause between outgoing emails ONLY after an email is actually sent
+      // Pause between outgoing emails ONLY after an email is actually sent, capped so we never time out
       if (res.status === "sent" && configObj.delaySeconds > 0 && !isTargetMet()) {
-        await sleep(configObj.delaySeconds * 1000);
+        const remainingNeeded = Math.max(1, targetQuota - getSuccessCount());
+        const timeLeftMs = MAX_EXECUTION_MS - (Date.now() - startTime);
+        const safeDelayMs = Math.max(
+          500,
+          Math.min(
+            configObj.delaySeconds * 1000,
+            3000,
+            Math.floor((timeLeftMs - remainingNeeded * 7000) / remainingNeeded)
+          )
+        );
+        await sleep(safeDelayMs);
       }
     } catch (err) {
       errorCount++;

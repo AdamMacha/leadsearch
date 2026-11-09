@@ -304,12 +304,10 @@ export function CampaignClient({
             <IconCheck size={16} style={{ color: "#10b981" }} />
           </div>
           <div className={styles.statBig} style={{ fontSize: 18 }}>
-            {hoursInfo.isWorkingDay && hoursInfo.isWorkingHour ? "🟢 Pracovní doba" : "⏸️ Klidový režim"}
+            🟢 Každý den (Po–Ne)
           </div>
           <div className={styles.statDesc}>
-            {cfg.workingDaysOnly || cfg.workHoursOnly
-              ? "Odesílá pouze Po–Pá 8:30–17:00 (ochrana před spam filtry)"
-              : "Bez omezení času"}
+            Odesílá 7 dní v týdnu včetně soboty a neděle do naplnění denního limitu ({cfg.dailyLimit} e-mailů)
           </div>
         </div>
       </section>
@@ -716,7 +714,7 @@ export function CampaignClient({
             </div>
             <p className="small muted" style={{ lineHeight: 1.5 }}>
               V projektu je již připraven konfigurační soubor <code>vercel.json</code>. Pokud máte aplikaci nasazenou na Vercelu,
-              Vercel sám automaticky volá tento endpoint každý všední den v <strong>9:00 ráno</strong>.
+              Vercel sám automaticky volá tento endpoint <strong>každý den (Po–Ne včetně víkendů) v 9:00 ráno</strong>.
             </p>
           </div>
 

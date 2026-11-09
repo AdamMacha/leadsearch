@@ -51,19 +51,55 @@ const TECH_SIGNATURES: [string, RegExp][] = [
 const SITE_BUILDERS = ["Wix", "Webnode", "Estránky", "Webareal", "Squarespace"];
 export const isSiteBuilder = (tech: string[]) => tech.some((t) => SITE_BUILDERS.includes(t));
 
-const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
-const IGNORED_EMAIL = /(sentry|wixpress|example\.|domain\.|email\.cz$|\.png|\.jpg|\.webp|\.svg|@2x)/i;
+const EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,15}/gi;
+const IGNORED_EMAIL =
+  /(sentry|wixpress|example\.|domain\.|domena\.|vas@email\.cz|^email@email\.cz$|^mail@|\.png$|\.jpg$|\.jpeg$|\.webp$|\.svg$|\.gif$|\.css$|\.js$|@2x)/i;
+
+export function sanitizeEmail(raw: string): string | null {
+  let e = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^[.,;:!?)(\]"'\s]+|[.,;:!?)(\]"'\s/]+$/g, "");
+  // Strip leading phone number digits glued to common Czech inbox names
+  e = e.replace(
+    /^\d{2,}(info|kontakt|office|obchod|prodejna|recepce|ordinace|studio|podpora|poptavky|servis|objednavky|sekretariat|rezervace)@/i,
+    "$1@"
+  );
+  // Strip trailing text glued to .cz / .sk / .eu (no valid TLD starts with .cz/.sk/.eu followed by letters)
+  e = e.replace(/\.(cz|sk|eu)[a-z]+$/i, ".$1");
+  // Strip trailing Czech words glued to .com (except .company / .community)
+  if (/\.com[a-z]+$/i.test(e) && !/\.(company|community)$/i.test(e)) {
+    e = e.replace(/\.com[a-z]+$/i, ".com");
+  }
+  if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,15}$/i.test(e)) return null;
+  if (IGNORED_EMAIL.test(e) || e.length >= 80 || e.length < 6) return null;
+  const domain = e.split("@")[1];
+  if (!domain || !domain.includes(".") || domain.startsWith(".") || domain.endsWith(".")) return null;
+  return e;
+}
 
 export function extractEmails(html: string, $?: cheerio.CheerioAPI): string[] {
   const found = new Set<string>();
   const q = $ ?? cheerio.load(html);
   q('a[href^="mailto:"]').each((_, el) => {
     const v = (q(el).attr("href") ?? "").replace(/^mailto:/i, "").split("?")[0].trim();
-    if (v) found.add(decodeURIComponent(v).toLowerCase());
+    if (v) {
+      try {
+        const clean = sanitizeEmail(decodeURIComponent(v));
+        if (clean) found.add(clean);
+      } catch {
+        const clean = sanitizeEmail(v);
+        if (clean) found.add(clean);
+      }
+    }
   });
-  const text = q("body").text() + " " + html.slice(0, 400_000);
-  for (const m of text.match(EMAIL_RE) ?? []) found.add(m.toLowerCase());
-  return [...found].filter((e) => !IGNORED_EMAIL.test(e) && e.length < 80).slice(0, 5);
+  // Replace HTML tags with spaces so adjacent elements never concatenate into the email
+  const spacedText = html.slice(0, 400_000).replace(/<[^>]+>/g, " ");
+  for (const m of spacedText.match(EMAIL_RE) ?? []) {
+    const clean = sanitizeEmail(m);
+    if (clean) found.add(clean);
+  }
+  return [...found].slice(0, 5);
 }
 
 export function parseHtml(html: string, baseUrl: string): HtmlFacts {

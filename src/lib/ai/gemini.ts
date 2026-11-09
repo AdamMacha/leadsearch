@@ -13,17 +13,20 @@ async function executeGeminiRequest<T>(prompt: string, model: string): Promise<T
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         generationConfig: { responseMimeType: "application/json", temperature: 0.7 },
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(18_000),
       cache: "no-store",
     },
   );
   const data = await res.json();
   if (!res.ok) {
     const rawMsg = data?.error?.message ?? res.statusText;
-    const isRateLimit = res.status === 429 || /quota|exhausted|rate limit/i.test(rawMsg);
+    const isRateLimit =
+      res.status === 429 ||
+      res.status === 503 ||
+      /quota|exhausted|rate limit|high demand|overloaded|unavailable/i.test(rawMsg);
     const err = new Error(
       isRateLimit
-        ? `Limit dotazů pro model ${model} byl vyčerpán (429 Rate Limit / Quota). Přepni na jiný model (např. ${DEFAULT_AI_MODEL}).`
+        ? `Limit dotazů nebo přetížení modelu ${model} (${res.status}). Přepni na jiný model (např. ${DEFAULT_AI_MODEL}).`
         : `Gemini (${model}): ${rawMsg}`
     );
     (err as unknown as { status?: number; isRateLimit?: boolean }).status = res.status;
@@ -36,17 +39,19 @@ async function executeGeminiRequest<T>(prompt: string, model: string): Promise<T
 }
 
 export async function callGeminiApi<T>(prompt: string, model: string = DEFAULT_AI_MODEL): Promise<T> {
-  try {
-    return await executeGeminiRequest<T>(prompt, model);
-  } catch (err) {
-    const msg = (err as Error).message;
-    // Auto-fallback to stable DEFAULT_AI_MODEL on 503 overload, 429 quota, or high demand
-    if (model !== DEFAULT_AI_MODEL && (/high demand|overloaded|unavailable|503|rate limit|quota/i.test(msg) || (err as { status?: number }).status === 503)) {
-      console.warn(`[Gemini] Model ${model} nedostupný (${msg}). Automatický fallback na ${DEFAULT_AI_MODEL}...`);
-      return await executeGeminiRequest<T>(prompt, DEFAULT_AI_MODEL);
+  const fallbacks = [model, "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-lite-latest"].filter(
+    (m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx
+  );
+  let lastErr: Error | null = null;
+  for (const candidate of fallbacks) {
+    try {
+      return await executeGeminiRequest<T>(prompt, candidate);
+    } catch (err) {
+      lastErr = err as Error;
+      console.warn(`[Gemini] Model ${candidate} selhal (${lastErr.message}). Zkouším další fallback...`);
     }
-    throw err;
   }
+  throw lastErr ?? new Error("Gemini volání selhalo");
 }
 
 export async function testAiModel(model: string): Promise<{ ok: boolean; latencyMs: number; error?: string }> {
@@ -86,23 +91,19 @@ export async function testAiModel(model: string): Promise<{ ok: boolean; latency
 
 async function gemini<T>(prompt: string, requestedModel?: string): Promise<{ data: T; modelUsed: string }> {
   const preferred = requestedModel?.trim() || config.geminiModel || DEFAULT_AI_MODEL;
-  const candidates = [preferred];
-  if (preferred !== "gemini-3.5-flash-lite") candidates.push("gemini-3.5-flash-lite");
-  if (preferred !== "gemini-3.5-flash") candidates.push("gemini-3.5-flash");
+  const candidates = [preferred, "gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-lite-latest"].filter(
+    (m, idx, arr) => Boolean(m) && arr.indexOf(m) === idx
+  );
 
   let lastError: Error | null = null;
   for (const model of candidates) {
     try {
-      const data = await callGeminiApi<T>(prompt, model);
+      const data = await executeGeminiRequest<T>(prompt, model);
       const modelUsed = model === preferred ? model : `${model} (fallback z ${preferred})`;
       return { data, modelUsed };
     } catch (err: unknown) {
       lastError = err as Error;
-      const isRateLimit = (err as { isRateLimit?: boolean })?.isRateLimit;
-      if (isRateLimit && candidates.length > 1) {
-        continue;
-      }
-      throw err;
+      console.warn(`[Gemini] Model ${model} selhal (${lastError.message}). Zkouším další...`);
     }
   }
   throw lastError ?? new Error("Gemini volání selhalo");
@@ -110,6 +111,11 @@ async function gemini<T>(prompt: string, requestedModel?: string): Promise<{ dat
 
 function leadContext(lead: Lead) {
   const a = lead.analysis;
+  const rawIssues = a?.issues.map((i) => `${i.title} – ${i.description}`) ?? [];
+  const problemy =
+    rawIssues.length > 0
+      ? rawIssues
+      : ["Prostor pro modernizaci vizuálního stylu, zvýšení konverzního poměru poptávek a posílení lokálního SEO"];
   return JSON.stringify(
     {
       firma: lead.name,
@@ -118,7 +124,7 @@ function leadContext(lead: Lead) {
       hodnoceni_google: lead.rating,
       pocet_recenzi: lead.reviewsCount,
       web: lead.website ?? "nemá web",
-      problemy: a?.issues.map((i) => `${i.title} – ${i.description}`) ?? [],
+      problemy,
       pagespeed_mobil: a?.pageSpeed
         ? { vykon: a.pageSpeed.performance, seo: a.pageSpeed.seo, pristupnost: a.pageSpeed.accessibility }
         : null,
@@ -143,7 +149,8 @@ export async function generateAudit(lead: Lead, modelOverride?: string): Promise
   const defaultHeadline = lead.website
     ? `Jak z webu získat více zákazníků pro ${lead.name}`
     : `Návrh nového webu pro ${lead.name}`;
-  const { data: out, modelUsed } = await gemini<Omit<AuditContent, "generatedAt" | "model">>(`
+  try {
+    const { data: out, modelUsed } = await gemini<Omit<AuditContent, "generatedAt" | "model">>(`
 Jsi zkušený webový konzultant. Napiš stručný, lidský a konkrétní rozbor webu pro majitele firmy v češtině.
 Nepoužívej technický žargon, mluv o dopadu na zákazníky a tržby. Žádné přehánění ani vymyšlená čísla.
 Tykání ne – vykej. Délka summary max 3 věty.
@@ -160,14 +167,19 @@ Vrať JSON:
   "recommendations": [{"title": "...", "description": "1–2 věty"}],   // 3–5 doporučení seřazených podle dopadu
   "benefits": ["přínos 1", "přínos 2", "přínos 3"]                       // co firma získá novým webem
 }`, modelOverride);
-  const cleanHeadline = out.headline && !/audit/i.test(out.headline) ? out.headline : defaultHeadline;
-  return { ...out, headline: cleanHeadline, generatedAt: new Date().toISOString(), model: modelUsed };
+    const cleanHeadline = out.headline && !/audit/i.test(out.headline) ? out.headline : defaultHeadline;
+    return { ...out, headline: cleanHeadline, generatedAt: new Date().toISOString(), model: modelUsed };
+  } catch (err) {
+    console.warn(`[generateAudit] Všechny AI modely selhaly pro ${lead.name}, používám šablonu:`, (err as Error).message);
+    return templateAudit(lead);
+  }
 }
 
 export async function generateOutreach(lead: Lead, modelOverride?: string): Promise<OutreachContent> {
   if (!config.geminiKey) return templateOutreach(lead);
   const link = lead.auditSlug ? auditUrl(lead.auditSlug) : null;
-  const { data: out, modelUsed } = await gemini<Omit<OutreachContent, "generatedAt" | "model">>(`
+  try {
+    const { data: out, modelUsed } = await gemini<Omit<OutreachContent, "generatedAt" | "model">>(`
 Jsi zkušený webový vývojář a píšeš osobní (ne hromadný) první kontakt konkrétní firmě v češtině.
 Pravidla:
 - Krátce, věcně, přátelsky, vykat. E-mail max 120 slov.
@@ -193,7 +205,11 @@ Vrať JSON:
   "callScript": "scénář na telefonát – úvod, 2–3 body, otázka na závěr (odrážky)",
   "linkedin": "krátká zpráva na LinkedIn (max 300 znaků)"
 }`, modelOverride);
-  return { ...out, generatedAt: new Date().toISOString(), model: modelUsed };
+    return { ...out, generatedAt: new Date().toISOString(), model: modelUsed };
+  } catch (err) {
+    console.warn(`[generateOutreach] Všechny AI modely selhaly pro ${lead.name}, používám šablonu:`, (err as Error).message);
+    return templateOutreach(lead);
+  }
 }
 
 /* ---------- Fallback templates (no AI key) ---------- */
@@ -201,17 +217,36 @@ Vrať JSON:
 function templateAudit(lead: Lead): AuditContent {
   const issues = lead.analysis?.issues ?? [];
   const noWeb = !lead.website;
+  const defaultRecs = [
+    {
+      title: "Přehlednější prezentace služeb a výzvy k akci",
+      description: "Návštěvník by měl během prvních vteřin jasně vidět hlavní přínos a mít na očích snadný způsob, jak odeslat poptávku.",
+    },
+    {
+      title: "Rychlost načítání a pohodlí na mobilu",
+      description: "Většina zákazníků dnes hledá služby na telefonu. Rychlé načtení a přehledné ovládání na mobilu přímo zvyšuje počet poptávek.",
+    },
+    {
+      title: "Lokální SEO a viditelnost ve vyhledávání",
+      description: "Správná struktura stránek, meta popisků a strukturovaných dat pomůže firmě získávat více zákazníků z Googlu.",
+    },
+  ];
+  const recommendations =
+    issues.length > 0
+      ? issues.slice(0, 5).map((i) => ({ title: i.title, description: i.description }))
+      : defaultRecs;
+  const topTitles = recommendations
+    .slice(0, 2)
+    .map((r) => r.title.toLowerCase())
+    .join(" a ");
   return {
     headline: noWeb
       ? `Návrh nového webu pro ${lead.name}`
       : `Jak z webu získat více zákazníků pro ${lead.name}`,
     summary: noWeb
       ? `Firma ${lead.name} má na Googlu ${lead.reviewsCount ?? 0} recenzí, ale žádný vlastní web. Zákazníci, kteří vás hledají, tak nemají kde zjistit víc ani poslat poptávku.`
-      : `Prošli jsme web ${lead.website} a našli ${issues.length} oblastí ke zlepšení. Nejdůležitější: ${issues
-          .slice(0, 2)
-          .map((i) => i.title.toLowerCase())
-          .join(" a ")}.`,
-    recommendations: issues.slice(0, 5).map((i) => ({ title: i.title, description: i.description })),
+      : `Prošli jsme web ${lead.website} a vytipovali hlavní příležitosti pro získání více poptávek – především v oblasti ${topTitles}.`,
+    recommendations,
     benefits: [
       "Více poptávek z Googlu i z mobilů",
       "Profesionální dojem, který odpovídá kvalitě vašich služeb",
@@ -227,7 +262,7 @@ function templateOutreach(lead: Lead): OutreachContent {
   const link = lead.auditSlug ? auditUrl(lead.auditSlug) : null;
   const finding = !lead.website
     ? `všiml jsem si, že ${lead.name} má na Google Mapách ${lead.reviewsCount ?? "řadu"} recenzí, ale nemá vlastní web`
-    : `prošel jsem váš web ${lead.website} a všiml si, že ${top.join(" a ") || "má prostor ke zlepšení"}`;
+    : `prošel jsem váš web ${lead.website} a všiml si, že ${top.join(" a ") || "má zajímavý prostor pro zvýšení počtu poptávek a modernizaci"}`;
   const email = `Dobrý den,
 
 ${finding}. To vás může stát část zákazníků, kteří vás hledají na mobilu nebo na Googlu.
